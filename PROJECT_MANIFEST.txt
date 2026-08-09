@@ -1,0 +1,26 @@
+CBB Model Dashboard v1.1 — Intelligence Terminal
+
+app.py
+requirements.txt
+README.md
+DEPLOY_STREAMLIT.md
+SECURITY_AND_PUBLISHING_SETUP.md
+STREAMLIT_SECRETS_TEMPLATE.toml
+V1_1_INTELLIGENCE_TERMINAL_RELEASE_NOTES.md
+PROJECT_MANIFEST.txt
+bootstrap_github.sh
+run_local.sh
+launch.command
+.streamlit/config.toml
+supabase/schema.sql
+cbb_dashboard/__init__.py
+cbb_dashboard/ui.py
+cbb_dashboard/data.py
+cbb_dashboard/intelligence.py
+cbb_dashboard/charts.py
+cbb_dashboard/performance.py
+cbb_dashboard/security.py
+cbb_dashboard/storage.py
+tests/
+DESIGN_PREVIEW.html
+DESIGN_PREVIEW.png

@@ -1,0 +1,148 @@
+<!doctype html><html><head><meta charset="utf-8"><title>CBB Model Preview</title>
+<style>
+:root {
+  --bg:#10090c;
+  --bg-2:#160d10;
+  --panel:#1b1115;
+  --panel-2:#25171b;
+  --line:rgba(251,146,60,.18);
+  --line-soft:rgba(231,203,188,.12);
+  --text:#fff7ed;
+  --muted:#b6a39a;
+  --accent:#f97316;
+  --accent-2:#2dd4bf;
+  --gold:#fbbf24;
+  --green:#4ade80;
+  --red:#fb7185;
+  --purple:#c084fc;
+}
+
+.stApp {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(124,45,18,.46) 0%, rgba(37,18,23,.28) 30%, transparent 52%),
+    radial-gradient(circle at 96% 6%, rgba(45,212,191,.10) 0%, transparent 28%),
+    linear-gradient(180deg, var(--bg-2) 0%, #0d080a 52%, #080507 100%);
+  color:var(--text);
+}
+[data-testid="stSidebar"] { background:#100b0d; border-right:1px solid var(--line-soft); }
+[data-testid="stHeader"] { background:rgba(8,5,7,.78); }
+.block-container { padding-top:1.65rem; max-width:1520px; }
+
+.cbb-kicker { color:var(--accent); font-size:.78rem; letter-spacing:.18em; font-weight:900; text-transform:uppercase; }
+.cbb-title { font-size:clamp(2rem,4vw,3.55rem); line-height:1; margin:.3rem 0 .45rem; font-weight:950; letter-spacing:-.045em; color:#fffaf5; }
+.cbb-subtitle { color:var(--muted); font-size:.98rem; margin-bottom:1.25rem; }
+.section-title { font-size:1.16rem; font-weight:900; margin:1.35rem 0 .72rem; letter-spacing:-.01em; }
+.section-note { color:var(--muted); font-size:.86rem; margin-top:-.42rem; margin-bottom:.8rem; }
+.small-muted { color:var(--muted); font-size:.75rem; }
+
+.metric-shell { background:linear-gradient(180deg,rgba(37,23,27,.96),rgba(24,14,18,.96)); border:1px solid var(--line-soft); border-radius:16px; padding:14px 15px; min-height:90px; box-shadow:0 10px 26px rgba(0,0,0,.12); }
+.metric-label { color:var(--muted); font-size:.70rem; text-transform:uppercase; letter-spacing:.09em; font-weight:800; }
+.metric-value { font-size:1.52rem; font-weight:950; color:var(--text); margin-top:5px; }
+.metric-foot { color:var(--muted); font-size:.70rem; margin-top:2px; }
+
+.status-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:8px; margin:2px 0 14px; }
+.status-item { background:rgba(31,18,23,.86); border:1px solid var(--line-soft); border-radius:12px; padding:10px 11px; min-width:0; }
+.status-top { display:flex; align-items:center; gap:6px; color:#c4b2aa; font-size:.61rem; font-weight:850; text-transform:uppercase; letter-spacing:.07em; }
+.status-dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+.status-dot.fresh { background:var(--green); box-shadow:0 0 10px rgba(74,222,128,.45); }
+.status-dot.info { background:var(--accent-2); box-shadow:0 0 10px rgba(45,212,191,.35); }
+.status-dot.warn { background:var(--gold); box-shadow:0 0 10px rgba(251,191,36,.35); }
+.status-dot.risk { background:var(--red); box-shadow:0 0 10px rgba(251,113,133,.35); }
+.status-value { color:#fff8f2; font-size:.78rem; font-weight:900; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.status-detail { color:#8f7c75; font-size:.59rem; margin-top:2px; line-height:1.35; }
+
+.game-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+.game-card { background:linear-gradient(145deg,rgba(38,22,27,.98),rgba(19,11,15,.98)); border:1px solid var(--line-soft); border-radius:18px; padding:17px 18px 16px; box-shadow:0 14px 34px rgba(0,0,0,.16); min-width:0; }
+.game-card.strong { border-color:rgba(249,115,22,.42); }
+.game-card.tossup { border-color:rgba(45,212,191,.30); }
+.game-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.rank-pill { font-size:.72rem; line-height:1; font-weight:950; color:#180b06; background:var(--accent); padding:7px 8px; border-radius:9px; display:inline-block; }
+.game-time { color:var(--muted); font-size:.69rem; margin-top:7px; }
+.prob { font-size:1.65rem; font-weight:950; color:var(--accent-2); text-align:right; line-height:1; }
+.prob-label { color:var(--muted); text-align:right; font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; }
+.model-pick { text-align:right; color:#fff; font-size:.82rem; font-weight:900; margin-top:6px; }
+
+.scoreboard { margin:14px 0 10px; border:1px solid var(--line-soft); border-radius:14px; overflow:hidden; background:rgba(255,255,255,.018); }
+.team-row { display:grid; grid-template-columns:minmax(0,1fr) 88px; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid rgba(231,203,188,.08); }
+.team-row:last-child { border-bottom:0; }
+.team-row.pick { background:linear-gradient(90deg,rgba(249,115,22,.10),transparent 66%); }
+.team-name { color:#f8eee8; font-weight:900; font-size:1rem; line-height:1.15; }
+.team-tag { color:var(--accent); font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; font-weight:900; margin-left:6px; }
+.score { color:#fffaf5; font-size:1.35rem; font-weight:950; text-align:right; }
+
+.chip-row { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.chip { display:inline-flex; align-items:center; padding:5px 8px; border-radius:999px; border:1px solid var(--line-soft); color:#c6b7b0; background:rgba(255,255,255,.024); font-size:.66rem; font-weight:750; }
+.chip.orange { color:#ffb27d; border-color:rgba(249,115,22,.30); background:rgba(249,115,22,.08); }
+.chip.teal { color:#87eee4; border-color:rgba(45,212,191,.28); background:rgba(45,212,191,.07); }
+.chip.green { color:#9af0b6; border-color:rgba(74,222,128,.26); background:rgba(74,222,128,.06); }
+.chip.gold { color:#ffdd83; border-color:rgba(251,191,36,.28); background:rgba(251,191,36,.06); }
+.chip.red { color:#ff9bad; border-color:rgba(251,113,133,.28); background:rgba(251,113,133,.06); }
+
+.card-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:10px; }
+.card-stat { background:rgba(255,255,255,.022); border:1px solid rgba(231,203,188,.09); border-radius:10px; padding:8px; min-width:0; }
+.card-stat-label { color:var(--muted); font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; }
+.card-stat-value { color:#fff8f2; font-size:.84rem; font-weight:900; margin-top:2px; overflow:hidden; text-overflow:ellipsis; }
+.baseline-strip { border-top:1px solid rgba(231,203,188,.10); margin-top:11px; padding-top:10px; color:#cdbcb4; font-size:.71rem; line-height:1.45; }
+.baseline-strip strong { color:#fff4ec; }
+.translation-note { color:#fbb98e; font-weight:800; }
+
+.intel-callout { border:1px solid rgba(249,115,22,.22); background:rgba(249,115,22,.055); border-radius:13px; padding:12px 14px; color:#d9c8bf; font-size:.78rem; line-height:1.5; }
+.intel-callout strong { color:#fff8f2; }
+.firewall-note { color:#ad9b93; font-size:.70rem; line-height:1.45; border-left:3px solid rgba(45,212,191,.55); padding:8px 10px; background:rgba(45,212,191,.045); border-radius:0 8px 8px 0; margin:10px 0; }
+.evidence-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.evidence-box { border:1px solid var(--line-soft); border-radius:12px; padding:11px 12px; background:rgba(255,255,255,.018); }
+.evidence-box.positive { border-color:rgba(74,222,128,.20); background:rgba(74,222,128,.035); }
+.evidence-box.risk { border-color:rgba(251,113,133,.20); background:rgba(251,113,133,.035); }
+.evidence-title { font-size:.66rem; font-weight:950; letter-spacing:.07em; text-transform:uppercase; color:#fff7f0; margin-bottom:7px; }
+.evidence-list { margin:0; padding-left:17px; color:#d1c1b8; font-size:.72rem; line-height:1.48; }
+.evidence-list li { margin:3px 0; }
+
+.compare-shell { display:grid; grid-template-columns:1fr auto 1fr; align-items:stretch; gap:8px; margin:10px 0; }
+.compare-side { border:1px solid var(--line-soft); border-radius:13px; padding:12px; background:rgba(255,255,255,.018); }
+.compare-side.primary { border-color:rgba(249,115,22,.30); background:rgba(249,115,22,.04); }
+.compare-title { color:var(--muted); font-size:.63rem; text-transform:uppercase; letter-spacing:.08em; font-weight:900; }
+.compare-main { color:#fff8f2; font-size:1.1rem; font-weight:950; margin-top:5px; }
+.compare-sub { color:#a9958c; font-size:.70rem; margin-top:3px; }
+.compare-arrow { align-self:center; color:var(--accent); font-size:1.3rem; font-weight:900; }
+
+div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radius:14px; overflow:hidden; }
+.stTabs [data-baseweb="tab-list"] { gap:6px; }
+.stTabs [data-baseweb="tab"] { background:#170f12; border:1px solid var(--line-soft); border-radius:10px; padding:8px 14px; }
+.stTabs [aria-selected="true"] { background:#2a191d; color:#fff; border-color:rgba(249,115,22,.34); }
+
+@media (max-width:950px) {
+  .game-card-grid { grid-template-columns:1fr; }
+  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cbb-title { font-size:2.25rem; }
+  .evidence-grid { grid-template-columns:1fr; }
+  .compare-shell { grid-template-columns:1fr; }
+  .compare-arrow { display:none; }
+  .status-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+</style>
+</head><body style="margin:0;background:#10090c;color:#fff7ed;font-family:Inter,Arial,sans-serif"><div style="max-width:1280px;margin:0 auto;padding:34px 38px 60px">
+<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>
+<div class="cbb-title">CBB MODEL <span style="color:#f97316">//</span> INTELLIGENCE TERMINAL</div>
+<div class="cbb-subtitle">Illustrative interface preview • V1.1 schedule-translation challenger</div>
+<div class="status-strip">
+<div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Engine</div><div class="status-value">V1.1.0</div><div class="status-detail">Schedule-translation challenger</div></div>
+<div class="status-item"><div class="status-top"><span class="status-dot info"></span>D-I cohort</div><div class="status-value">42/44 games</div><div class="status-detail">Primary evaluation population</div></div>
+<div class="status-item"><div class="status-top"><span class="status-dot info"></span>Schedule layer</div><div class="status-value">19 adjusted</div><div class="status-detail">Walk-forward translation</div></div>
+<div class="status-item"><div class="status-top"><span class="status-dot warn"></span>Availability</div><div class="status-value">86% verified</div><div class="status-detail">Pregame status coverage</div></div>
+<div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Data quality</div><div class="status-value">71/100</div><div class="status-detail">Mean slate quality</div></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:12px 0 18px">
+<div class="metric-shell"><div class="metric-label">Games</div><div class="metric-value">44</div><div class="metric-foot">42 D-I vs D-I</div></div>
+<div class="metric-shell"><div class="metric-label">Strongest pick</div><div class="metric-value">North State</div><div class="metric-foot">84.2% win probability</div></div>
+<div class="metric-shell"><div class="metric-label">Neutral court</div><div class="metric-value">8</div><div class="metric-foot">Tournament / showcase</div></div>
+<div class="metric-shell"><div class="metric-label">Pick changes</div><div class="metric-value">3</div><div class="metric-foot">vs frozen V1.0.1</div></div>
+<div class="metric-shell"><div class="metric-label">Avg translation</div><div class="metric-value">2.1 pts</div><div class="metric-foot">Absolute adjustment</div></div>
+</div>
+<div class="section-title">Priority board</div><div class="section-note">Score-first game cards with challenger-vs-baseline context.</div>
+<div class="game-card-grid">
+<div class="game-card strong"><div class="game-head"><div><span class="rank-pill">#1</span><div class="game-time">Jan 10 • 20:00 UTC · Neutral</div></div><div><div class="prob">84.2%</div><div class="prob-label">Model win probability</div><div class="model-pick">North State -11.5</div></div></div><div class="scoreboard"><div class="team-row"><div class="team-name">Lake University</div><div class="score">67.8</div></div><div class="team-row pick"><div class="team-name">North State<span class="team-tag">MODEL PICK</span></div><div class="score">79.3</div></div></div><div class="chip-row"><span class="chip teal">D-I vs D-I</span><span class="chip orange">Neutral court</span><span class="chip green">Availability verified</span><span class="chip orange">Translation 4.2 pts toward North State</span></div><div class="card-grid"><div class="card-stat"><div class="card-stat-label">Fair ML</div><div class="card-stat-value">-533</div></div><div class="card-stat"><div class="card-stat-label">Projected total</div><div class="card-stat-value">147.1</div></div><div class="card-stat"><div class="card-stat-label">Expected pace</div><div class="card-stat-value">68.4</div></div><div class="card-stat"><div class="card-stat-label">Confidence</div><div class="card-stat-value">73/100</div></div><div class="card-stat"><div class="card-stat-label">Data quality</div><div class="card-stat-value">78/100</div></div><div class="card-stat"><div class="card-stat-label">Margin SD</div><div class="card-stat-value">14.1</div></div><div class="card-stat"><div class="card-stat-label">Home AdjNet</div><div class="card-stat-value">24.8</div></div><div class="card-stat"><div class="card-stat-label">Away AdjNet</div><div class="card-stat-value">12.2</div></div></div><div class="baseline-strip"><strong>Frozen V1.0.1:</strong> North State -7.3 · 70.1%. <span class="translation-note">V1.1 translation: 4.2 pts toward North State.</span></div></div>
+<div class="game-card tossup"><div class="game-head"><div><span class="rank-pill">#8</span><div class="game-time">Jan 10 • 22:30 UTC · Campus/site game</div></div><div><div class="prob">55.6%</div><div class="prob-label">Model win probability</div><div class="model-pick">Metro +? / fair -1.9</div></div></div><div class="scoreboard"><div class="team-row pick"><div class="team-name">Metro<span class="team-tag">MODEL PICK</span></div><div class="score">74.0</div></div><div class="team-row"><div class="team-name">Coastal</div><div class="score">72.1</div></div></div><div class="chip-row"><span class="chip teal">D-I vs D-I</span><span class="chip gold">Availability unverified</span><span class="chip red">Baseline pick changed</span></div><div class="card-grid"><div class="card-stat"><div class="card-stat-label">Fair ML</div><div class="card-stat-value">-125</div></div><div class="card-stat"><div class="card-stat-label">Projected total</div><div class="card-stat-value">146.1</div></div><div class="card-stat"><div class="card-stat-label">Expected pace</div><div class="card-stat-value">70.0</div></div><div class="card-stat"><div class="card-stat-label">Confidence</div><div class="card-stat-value">53/100</div></div><div class="card-stat"><div class="card-stat-label">Data quality</div><div class="card-stat-value">68/100</div></div><div class="card-stat"><div class="card-stat-label">Margin SD</div><div class="card-stat-value">14.4</div></div><div class="card-stat"><div class="card-stat-label">Home AdjNet</div><div class="card-stat-value">12.0</div></div><div class="card-stat"><div class="card-stat-label">Away AdjNet</div><div class="card-stat-value">14.1</div></div></div><div class="baseline-strip"><strong>Frozen V1.0.1:</strong> Coastal -1.1 · 52.3%. <span class="translation-note">V1.1 schedule translation flips the side.</span></div></div>
+</div>
+<div class="section-title">Matchup intelligence</div><div class="evidence-grid"><div class="evidence-box positive"><div class="evidence-title">Supporting signals</div><ul class="evidence-list"><li>Adjusted net efficiency favors North State.</li><li>D-I schedule strength is materially stronger.</li><li>Cross-schedule translation adds separation without changing the total.</li></ul></div><div class="evidence-box risk"><div class="evidence-title">Risks / uncertainty</div><ul class="evidence-list"><li>Availability status remains a distinct verification layer.</li><li>Simulation tails still preserve opponent win paths.</li><li>Market information is intentionally absent from V1.1.</li></ul></div></div>
+<div class="firewall-note"><strong>Model firewall:</strong> Intelligence Terminal displays immutable V1.1 model output. No sportsbook odds, splits, or market signals feed the prediction.</div>
+</div></body></html>
