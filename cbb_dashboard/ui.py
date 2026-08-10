@@ -289,7 +289,11 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
 }
 
 
-.help-dot { display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border-radius:50%; border:1px solid rgba(231,203,188,.30); color:#ccb9af; font-size:.52rem; font-weight:950; line-height:1; cursor:help; vertical-align:1px; text-transform:none; letter-spacing:0; }
+.help-dot { position:relative; display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border-radius:50%; border:1px solid rgba(231,203,188,.30); color:#ccb9af; font-size:.52rem; font-weight:950; line-height:1; cursor:help; vertical-align:1px; text-transform:none; letter-spacing:0; outline:none; }
+.help-dot::after { content:attr(data-tooltip); position:absolute; z-index:10000; left:50%; bottom:calc(100% + 9px); transform:translateX(-50%) translateY(3px); width:max-content; max-width:280px; min-width:210px; padding:9px 11px; border:1px solid rgba(245,158,11,.30); border-radius:9px; background:#171014; color:#fff7ed; box-shadow:0 10px 28px rgba(0,0,0,.38); font-size:.68rem; font-weight:650; line-height:1.42; text-align:left; text-transform:none; letter-spacing:0; white-space:normal; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .12s ease, transform .12s ease, visibility .12s ease; }
+.help-dot::before { content:""; position:absolute; z-index:10001; left:50%; bottom:calc(100% + 4px); width:8px; height:8px; background:#171014; border-right:1px solid rgba(245,158,11,.30); border-bottom:1px solid rgba(245,158,11,.30); transform:translateX(-50%) rotate(45deg); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .12s ease, visibility .12s ease; }
+.help-dot:hover::after, .help-dot:focus::after, .help-dot:focus-visible::after { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+.help-dot:hover::before, .help-dot:focus::before, .help-dot:focus-visible::before { opacity:1; visibility:visible; }
 .metric-shell[title], .profile-metric[title], .dossier-context[title], .battle-card[title] { cursor:help; }
 .metric-glossary { margin-top:10px; border:1px solid rgba(231,203,188,.10); border-radius:11px; background:rgba(255,255,255,.015); }
 .metric-glossary > summary { cursor:pointer; list-style:none; padding:9px 10px; color:#cdbbb2; font-size:.66rem; font-weight:900; }

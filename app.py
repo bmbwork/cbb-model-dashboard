@@ -48,7 +48,7 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -104,7 +104,7 @@ def make_store() -> tuple[SupabaseSlateStore | None, str | None]:
 
 
 def metric_card(label: str, value: str, foot: str = "", tooltip: str = "") -> None:
-    help_html = f'<span class="help-dot" title="{esc(tooltip)}" aria-label="{esc(tooltip)}">?</span>' if tooltip else ""
+    help_html = f'<span class="help-dot" data-tooltip="{esc(tooltip)}" aria-label="{esc(tooltip)}" tabindex="0">?</span>' if tooltip else ""
     title_attr = f' title="{esc(tooltip)}"' if tooltip else ""
     st.markdown(
         compact_html(f"""

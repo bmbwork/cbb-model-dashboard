@@ -388,7 +388,7 @@ def _fmt(value: float, digits: int = 1, suffix: str = "") -> str:
 
 def _profile_metric(label: str, value: object, note: str = "", tooltip: str = "") -> str:
     note_html = f'<span class="profile-note">{esc(note)}</span>' if note else ""
-    help_html = f'<span class="help-dot" title="{esc(tooltip)}" aria-label="{esc(tooltip)}">?</span>' if tooltip else ""
+    help_html = f'<span class="help-dot" data-tooltip="{esc(tooltip)}" aria-label="{esc(tooltip)}" tabindex="0">?</span>' if tooltip else ""
     title_attr = f' title="{esc(tooltip)}"' if tooltip else ""
     return f'<div class="profile-metric"{title_attr}><span>{esc(label)}{help_html}</span><strong>{esc(value)}</strong>{note_html}</div>'
 
