@@ -39,24 +39,26 @@ def confidence_chart(board: pd.DataFrame, top_n: int = 25) -> go.Figure:
         y=labels,
         orientation="h",
         marker_color=ACCENT,
-        customdata=np.c_[data["Fair Spread"], data["Confidence Score"]],
-        hovertemplate="%{y}<br>Win probability %{x:.1f}%<br>Fair spread %{customdata[0]:+.1f}<br>Confidence %{customdata[1]:.0f}/100<extra></extra>",
+        customdata=np.c_[data["Fair Spread"]],
+        hovertemplate="%{y}<br>Win probability %{x:.1f}%<br>Model line %{customdata[0]:+.1f}<extra></extra>",
     ))
     fig.update_xaxes(title="Model win probability", ticksuffix="%", range=[50, max(100, float((data["_win_prob"]*100).max()) + 2)])
-    return _layout(fig, f"Top {min(top_n, len(data))} model confidence")
+    return _layout(fig, f"Top {min(top_n, len(data))} projection strength")
 
 
 def team_comparison_chart(row: pd.Series) -> go.Figure:
+    """Raw adjusted-efficiency comparison without mixing SOS onto the same axis."""
     home = str(row.get("Home Team"))
     away = str(row.get("Away Team"))
-    metrics = ["AdjO", "AdjD", "AdjNet", "D-I SOS"]
-    hv = [row.get("Home AdjO"), row.get("Home AdjD"), row.get("Home AdjNet"), row.get("V1.1 Home D1 SOS", row.get("Home SOS"))]
-    av = [row.get("Away AdjO"), row.get("Away AdjD"), row.get("Away AdjNet"), row.get("V1.1 Away D1 SOS", row.get("Away SOS"))]
+    metrics = ["AdjO", "AdjD", "AdjNet"]
+    hv = [row.get("Home AdjO"), row.get("Home AdjD"), row.get("Home AdjNet")]
+    av = [row.get("Away AdjO"), row.get("Away AdjD"), row.get("Away AdjNet")]
     fig = go.Figure()
     fig.add_trace(go.Bar(name=away, x=metrics, y=av, marker_color=BASE))
     fig.add_trace(go.Bar(name=home, x=metrics, y=hv, marker_color=ACCENT))
     fig.update_layout(barmode="group")
-    return _layout(fig, "Team-strength comparison")
+    fig.update_yaxes(title="Points per 100 possessions / net margin")
+    return _layout(fig, "Adjusted efficiency profile · AdjD lower is better")
 
 
 def challenger_comparison_chart(row: pd.Series) -> go.Figure:
@@ -70,11 +72,9 @@ def challenger_comparison_chart(row: pd.Series) -> go.Figure:
 
 def performance_trend(history: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["Margin MAE"], mode="lines+markers", name="Published model", line=dict(color=ACCENT)))
-    if "V1.0.1 Margin MAE" in history.columns and history["V1.0.1 Margin MAE"].notna().any():
-        fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["V1.0.1 Margin MAE"], mode="lines+markers", name="V1.0.1", line=dict(color=BASE)))
+    fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["Margin MAE"], mode="lines+markers", name="Production model", line=dict(color=ACCENT)))
     fig.update_yaxes(title="Margin MAE (points)")
-    return _layout(fig, "Walk-forward margin error")
+    return _layout(fig, "Production margin error by slate")
 
 
 def calibration_chart(buckets: pd.DataFrame) -> go.Figure:

@@ -1,21 +1,45 @@
-# CBB Model Dashboard v1.2 — Champion Terminal
+# CBB Model Dashboard v1.3 — Betting Intelligence
 
-Streamlit presentation layer for the CBB V1.1.3B production champion. The website remains downstream and read-only for public users: it displays published model output and official grading but never reruns or alters the prediction engine.
+Streamlit presentation layer for the CBB V1.1.3B production champion. Public users remain read-only. The website displays published pregame forecasts, optional downstream market context, and official grading; it never reruns, retrains, rescales, or alters the independent prediction engine.
 
-## v1.2 highlights
+## v1.3 highlights
 
-- Fixes the multi-card raw-HTML rendering defect by compacting generated card markup before Streamlit Markdown rendering.
-- Rebrands the main surface around **V1.1.3B Production Champion** while preserving old 1.1.x archive compatibility.
-- Adds expandable **Game Intelligence Dossiers** with “Why we like the pick”, “Risks / reasons for caution”, and side-by-side team profiles.
-- Adds quick matchup fields for AdjO, AdjD, AdjNet, D-I SOS, matchup adjustments, availability, uncertainty, and optional true pregame PPG / PPG allowed.
-- Adds graded result ribbons: green **ML W** and gold **SPREAD W**.
-- ATS/spread grading is deliberately shown only when an explicit spread result or a stored sportsbook home spread exists. The model's own fair spread is never treated as the sportsbook line.
-- Performance Lab defaults to V1.1.3B-only evidence once champion grading exists, keeping archived challenger results separate.
+- Bettor-first game cards: model side, win probability, model line, model fair ML, projected score/total, pace, uncertainty band and data quality.
+- Removes old challenger/baseline/calibration plumbing from bettor-facing cards and the public decision table.
+- Rich **Game Intelligence Dossiers** with:
+  - why the model likes the pick;
+  - what can beat the pick;
+  - two full team profile cards;
+  - adjusted offense, defense, net efficiency and D-I SOS;
+  - optional true pregame PPG / PPG allowed;
+  - matchup battlegrounds;
+  - availability, uncertainty and data quality;
+  - optional downstream market context.
+- Expanded **Team Intelligence** page with a team dossier hero, current matchup profile, opponent profile and matchup battleground.
+- Upgraded result treatment: green W banner for a winning ML or ATS grade and a stronger gold W sweep banner when both hit.
+- Correct betting-line accounting:
+  - ATS grades against a stored decision-time/taken spread or explicit grader result;
+  - closing spread is stored separately for CLV reference;
+  - closing spread is never substituted as the ATS bet line;
+  - model fair spread is never treated as a sportsbook line.
+- Market/model gap is display-only and never creates an automatic BET, LEAN, PASS or +EV label.
+- Performance Laboratory now presents a production evidence view rather than public challenger comparisons.
+- Historical 1.1.x published slates remain backward-compatible.
 
-## No database migration required
+## PPG / PPG allowed
 
-v1.2 continues to use the existing `cbb_slates` board/grading JSON storage. Existing Streamlit secrets and Supabase RLS configuration remain valid.
+The UI supports these fields when the production board exports them. If true pregame PPG / PPG allowed are absent, the site displays `—`. It never back-solves them from projected scores or adjusted efficiency.
+
+## Database
+
+No Supabase migration is required for v1.3. Existing `cbb_slates` JSON storage, authentication and RLS remain compatible. Optional decision/closing market fields can travel inside the existing published JSON payload.
 
 ## Deploy
 
-Use the included `upgrade_github_v1_2.sh` from the patch package, or replace the repository files and push `main` normally. Streamlit Community Cloud will redeploy from GitHub.
+From the v1.3 patch folder:
+
+```bash
+bash upgrade_github_v1_3.sh
+```
+
+The script targets `~/Desktop/cbb-model-dashboard`, requires that folder to already be a Git repository, pulls `main`, installs the patch, compiles Python, runs pytest when available, commits and pushes to GitHub. Streamlit Community Cloud should redeploy automatically.

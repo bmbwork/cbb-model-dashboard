@@ -218,5 +218,75 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
   .dossier-context-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .intel-dossier > summary span:last-child { display:none; }
 }
+
+
+/* v1.3 Betting Intelligence */
+.chip.projection { color:#d8f8f4; border-color:rgba(45,212,191,.23); background:rgba(45,212,191,.045); }
+.chip.market { color:#fef3c7; border-color:rgba(251,191,36,.34); background:rgba(251,191,36,.075); }
+
+.betting-snapshot { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+.profile-metric { position:relative; background:rgba(255,255,255,.022); border:1px solid rgba(231,203,188,.09); border-radius:10px; padding:9px; min-width:0; }
+.profile-metric > span:first-child { display:block; color:var(--muted); font-size:.57rem; text-transform:uppercase; letter-spacing:.06em; font-weight:750; }
+.profile-metric strong { display:block; color:#fff8f2; font-size:.84rem; font-weight:950; margin-top:3px; overflow:hidden; text-overflow:ellipsis; }
+.profile-note { display:block; color:#806f68 !important; font-size:.50rem !important; text-transform:none !important; letter-spacing:0 !important; margin-top:2px; }
+
+.result-banner { grid-template-columns:42px auto 1fr; grid-template-areas:"mark copy outcomes" "line line line"; padding:10px 11px; }
+.result-mark { grid-area:mark; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#190d05; background:#8f7c75; font-size:1.02rem; font-weight:1000; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); }
+.result-copy { grid-area:copy; min-width:0; }
+.result-headline { color:#f6e7de; font-size:.59rem; font-weight:950; letter-spacing:.09em; }
+.result-banner.win { border-color:rgba(74,222,128,.44); background:linear-gradient(90deg,rgba(34,197,94,.20),rgba(74,222,128,.055) 62%,rgba(255,255,255,.015)); }
+.result-banner.win .result-mark { background:linear-gradient(135deg,#4ade80,#22c55e); color:#06140a; box-shadow:0 0 20px rgba(74,222,128,.14); }
+.result-banner.sweep { border-color:rgba(251,191,36,.70); background:linear-gradient(90deg,rgba(251,191,36,.28),rgba(245,158,11,.13) 55%,rgba(249,115,22,.035)); box-shadow:0 0 28px rgba(251,191,36,.10); }
+.result-banner.sweep .result-mark { background:linear-gradient(135deg,#fde68a,#fbbf24 50%,#f59e0b); color:#1d1200; box-shadow:0 0 24px rgba(251,191,36,.24); }
+.result-banner.sweep .result-headline { color:#ffe7a6; }
+.result-banner.loss .result-mark { background:rgba(251,113,133,.12); color:#ffb1bd; border:1px solid rgba(251,113,133,.28); }
+.result-final { margin-top:2px; }
+
+.team-profile-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:10px; }
+.team-profile-card { border:1px solid var(--line-soft); border-radius:14px; padding:12px; background:linear-gradient(145deg,rgba(29,18,22,.95),rgba(18,11,14,.95)); }
+.team-profile-card.focus { border-color:rgba(251,191,36,.23); }
+.team-profile-card.selected { background:linear-gradient(145deg,rgba(66,36,20,.36),rgba(22,13,16,.96)); }
+.team-profile-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px; }
+.team-profile-head div > span { display:block; color:#a9958b; font-size:.53rem; font-weight:900; letter-spacing:.09em; }
+.team-profile-head div > strong { display:block; color:#fff7ed; font-size:1rem; margin-top:2px; }
+.pick-check { display:flex; width:24px; height:24px; border-radius:50%; align-items:center; justify-content:center; background:rgba(74,222,128,.11); border:1px solid rgba(74,222,128,.28); color:#83efaa; font-weight:950; }
+.team-profile-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+
+.battle-shell { border:1px solid rgba(45,212,191,.14); background:rgba(45,212,191,.025); border-radius:13px; padding:10px 11px; margin-top:10px; }
+.battle-title { color:#8feee5; font-size:.57rem; font-weight:950; letter-spacing:.09em; margin-bottom:7px; }
+.battle-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.battle-card { border:1px solid rgba(45,212,191,.10); border-radius:9px; padding:8px; background:rgba(255,255,255,.015); }
+.battle-card span { display:block; color:#a9958b; font-size:.54rem; text-transform:uppercase; letter-spacing:.055em; }
+.battle-card strong { display:block; color:#f8fffe; font-size:.83rem; margin-top:2px; }
+.battle-card em { display:block; color:#74645e; font-size:.52rem; font-style:normal; margin-top:2px; line-height:1.35; }
+
+.market-context { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px 10px; align-items:center; border-radius:12px; padding:10px 11px; margin-top:10px; border:1px solid rgba(148,163,184,.12); background:rgba(255,255,255,.015); }
+.market-context > div:first-child span { display:block; color:#9f8c83; font-size:.54rem; font-weight:900; letter-spacing:.08em; }
+.market-context > div:first-child strong { display:block; color:#fff3d4; font-size:.86rem; margin-top:2px; }
+.market-context p { grid-column:1/-1; margin:2px 0 0; color:#7f6d66; font-size:.56rem; line-height:1.4; }
+.market-context.live { border-color:rgba(251,191,36,.22); background:rgba(251,191,36,.035); }
+.market-gap { color:#ffe19a; font-size:.72rem; font-weight:900; text-align:right; }
+.market-close { grid-column:1/-1; color:#a9958b; font-size:.58rem; }
+
+.team-dossier-hero { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; border:1px solid rgba(251,191,36,.22); background:linear-gradient(90deg,rgba(251,191,36,.075),rgba(249,115,22,.025)); border-radius:15px; padding:14px 15px; margin:6px 0 12px; }
+.team-dossier-hero > div:last-child { text-align:right; }
+.team-dossier-hero span { display:block; color:#bda99f; font-size:.58rem; font-weight:900; letter-spacing:.08em; }
+.team-dossier-hero strong { display:block; color:#fff7ed; font-size:1.25rem; font-weight:950; margin-top:2px; }
+.team-dossier-hero p { margin:2px 0 0; color:#8e7b73; font-size:.64rem; }
+
+@media (max-width:950px) {
+  .battle-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:700px) {
+  .betting-snapshot { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .team-profile-grid { grid-template-columns:1fr; }
+  .team-profile-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .battle-grid { grid-template-columns:1fr 1fr; }
+  .result-banner { grid-template-columns:38px 1fr; grid-template-areas:"mark copy" "outcomes outcomes" "line line"; }
+  .result-outcomes { justify-content:flex-start; }
+  .team-dossier-hero { grid-template-columns:1fr; }
+  .team-dossier-hero > div:last-child { text-align:left; }
+}
+
 </style>
 """

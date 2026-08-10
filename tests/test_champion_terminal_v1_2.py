@@ -20,38 +20,46 @@ def _champion_board(board_df: pd.DataFrame) -> pd.DataFrame:
     return b
 
 
+def _graded(raw: pd.DataFrame) -> pd.DataFrame:
+    out = raw.copy()
+    out["Final Away Score"] = 70
+    out["Final Home Score"] = 80
+    out["Status"] = "final"
+    out["Grade Eligible"] = True
+    out["Actual Winner"] = "Home Tech"
+    out["Actual Home Margin"] = 10.0
+    out["Actual Total"] = 150.0
+    out["Model Winner Correct"] = True
+    out["Absolute Margin Error"] = 3.6
+    out["Brier Component"] = 0.08
+    out["Log Loss Component"] = 0.3
+    return out
+
+
 def test_card_grid_is_compacted_to_prevent_markdown_code_blocks(board_df):
     board, _ = normalize_board(_champion_board(board_df))
     html = game_card_grid_html(board)
     assert html.count('class="game-card ') == 2
     assert "\n" not in html
     assert "Game Intelligence Dossier" in html
-    assert "Why we like Home Tech" in html
+    assert "WHY THE MODEL LIKES Home Tech" in html
 
 
-def test_champion_card_uses_b_calibration_not_old_translation(board_df):
+def test_bettor_facing_champion_card_hides_research_plumbing(board_df):
     board, _ = normalize_board(_champion_board(board_df))
     html = game_card_html(board.iloc[0])
     assert "Production champion" in html
-    assert "B calibration" in html
+    assert "Model line" in html
+    assert "Model fair ML" in html
+    assert "B calibration" not in html
+    assert "Frozen V1.0.1" not in html
     assert "V1.1 translation" not in html
-    assert "Frozen V1.0.1 audit" in html
 
 
-def test_ml_and_market_spread_w_are_displayable(board_df):
-    raw = _champion_board(board_df.iloc[[0]].copy())
-    raw["Final Away Score"] = 70
-    raw["Final Home Score"] = 80
-    raw["Status"] = "final"
-    raw["Grade Eligible"] = True
-    raw["Actual Winner"] = "Home Tech"
-    raw["Actual Home Margin"] = 10.0
-    raw["Actual Total"] = 150.0
-    raw["Model Winner Correct"] = True
-    raw["Absolute Margin Error"] = 3.6
-    raw["Brier Component"] = 0.08
-    raw["Log Loss Component"] = 0.3
-    raw["Market Home Spread"] = -6.5
+def test_ml_and_decision_spread_w_are_displayable(board_df):
+    raw = _graded(_champion_board(board_df.iloc[[0]].copy()))
+    raw["Bet Home Spread"] = -6.5
+    raw["Closing Home Spread"] = -8.0
     graded, _ = normalize_graded_board(raw)
     assert bool(graded.loc[0, "_ml_correct"]) is True
     assert bool(graded.loc[0, "_spread_correct"]) is True
@@ -59,23 +67,16 @@ def test_ml_and_market_spread_w_are_displayable(board_df):
     merged = attach_grading(board, raw)
     html = game_card_html(merged.iloc[0])
     assert "ML <strong>W</strong>" in html
-    assert "SPREAD <strong>W</strong>" in html
-    assert "Home line -6.5" in html
+    assert "ATS <strong>W</strong>" in html
+    assert "ML + ATS SWEEP" in html
+    assert "ATS line: Home Tech -6.5" in html
+    assert "CLV +1.5 pts" in html
 
 
-def test_fair_spread_is_not_used_as_ats_line(board_df):
-    raw = _champion_board(board_df.iloc[[0]].copy())
-    raw["Final Away Score"] = 70
-    raw["Final Home Score"] = 80
-    raw["Status"] = "final"
-    raw["Grade Eligible"] = True
-    raw["Actual Winner"] = "Home Tech"
-    raw["Actual Home Margin"] = 10.0
-    raw["Actual Total"] = 150.0
-    raw["Model Winner Correct"] = True
-    raw["Absolute Margin Error"] = 3.6
-    raw["Brier Component"] = 0.08
-    raw["Log Loss Component"] = 0.3
+def test_fair_spread_and_closing_spread_are_not_used_as_ats_line(board_df):
+    raw = _graded(_champion_board(board_df.iloc[[0]].copy()))
+    raw["Closing Home Spread"] = -6.5
     graded, _ = normalize_graded_board(raw)
     assert graded.loc[0, "_spread_source"] == ""
     assert pd.isna(graded.loc[0, "_spread_correct"])
+    assert graded.loc[0, "_closing_home_spread"] == -6.5

@@ -22,9 +22,10 @@ GRADE_REQUIRED_COLUMNS = [
     "Brier Component", "Log Loss Component",
 ]
 
-MARKET_HOME_SPREAD_COLUMNS = (
-    "Closing Home Spread", "Market Home Spread", "Sportsbook Home Spread", "Bet Home Spread",
+DECISION_HOME_SPREAD_COLUMNS = (
+    "Bet Home Spread", "Taken Home Spread", "Decision Home Spread", "Market Home Spread", "Sportsbook Home Spread",
 )
+CLOSING_HOME_SPREAD_COLUMNS = ("Closing Home Spread",)
 EXPLICIT_SPREAD_RESULT_COLUMNS = (
     "Model Spread Correct", "Spread Correct", "ATS Correct", "Model ATS Correct",
 )
@@ -139,6 +140,7 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
         "V1.1.3B Margin Adjustment", "V1.1.3B Training Games",
         "Home PPG", "Away PPG", "Home PPG Allowed", "Away PPG Allowed",
         "Home Points Per Game", "Away Points Per Game", "Home Points Allowed Per Game", "Away Points Allowed Per Game",
+        *DECISION_HOME_SPREAD_COLUMNS, *CLOSING_HOME_SPREAD_COLUMNS,
     ]
     _numeric(board, numeric_columns)
 
@@ -182,8 +184,12 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
     board["_actual_winner"] = ""
     board["_ml_correct"] = pd.Series([pd.NA] * len(board), dtype="boolean")
     board["_spread_correct"] = pd.Series([pd.NA] * len(board), dtype="boolean")
-    board["_market_home_spread"] = np.nan
-    board["_spread_source"] = ""
+    market_home, market_source = _first_numeric_column(board, DECISION_HOME_SPREAD_COLUMNS)
+    closing_home, closing_source = _first_numeric_column(board, CLOSING_HOME_SPREAD_COLUMNS)
+    board["_market_home_spread"] = market_home
+    board["_spread_source"] = market_source or ""
+    board["_closing_home_spread"] = closing_home
+    board["_closing_source"] = closing_source or ""
 
     warnings: list[str] = []
     if not board["_availability_verified"].any():
@@ -215,7 +221,7 @@ def normalize_graded_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardRepo
         "Margin Error", "Absolute Margin Error", "Total Error", "Absolute Total Error", "Brier Component", "Log Loss Component",
         "V1.0.1 Baseline Margin Error", "V1.0.1 Baseline Absolute Margin Error", "V1.0.1 Baseline Brier Component",
         "V1.0.1 Baseline Log Loss Component", "V1.1 Margin Error Improvement",
-        *MARKET_HOME_SPREAD_COLUMNS,
+        *DECISION_HOME_SPREAD_COLUMNS, *CLOSING_HOME_SPREAD_COLUMNS,
     ])
     for col in ["Grade Eligible", "Primary Evaluation Eligible"]:
         if col in board.columns:
@@ -235,7 +241,10 @@ def normalize_graded_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardRepo
             explicit_source = col
             break
 
-    market_home, market_source = _first_numeric_column(board, MARKET_HOME_SPREAD_COLUMNS)
+    market_home, market_source = _first_numeric_column(board, DECISION_HOME_SPREAD_COLUMNS)
+    closing_home, closing_source = _first_numeric_column(board, CLOSING_HOME_SPREAD_COLUMNS)
+    board["_closing_home_spread"] = closing_home
+    board["_closing_source"] = closing_source or ""
     board["_market_home_spread"] = market_home
     if explicit_result is not None:
         board["_spread_correct"] = explicit_result
@@ -261,15 +270,16 @@ def attach_grading(board: pd.DataFrame, grading: pd.DataFrame | None) -> pd.Data
     """Attach official result fields to an already-normalized prediction board.
 
     Grading is display-only. The original prediction values are never overwritten.
-    ATS is graded only from an explicit result field or a stored sportsbook home
-    spread; model fair spread is intentionally never treated as a sportsbook line.
+    ATS is graded only from an explicit result field or a stored decision/taken
+    sportsbook spread. Closing spread is retained separately for CLV reference and
+    model fair spread is never treated as a sportsbook line.
     """
     if grading is None or grading.empty:
         return board.copy()
     graded, _ = normalize_graded_board(grading)
     result_cols = [
         "Game ID", "_grade_eligible", "_final_away", "_final_home", "_actual_winner",
-        "_ml_correct", "_spread_correct", "_market_home_spread", "_spread_source",
+        "_ml_correct", "_spread_correct", "_market_home_spread", "_spread_source", "_closing_home_spread", "_closing_source",
     ]
     right = graded[result_cols].copy()
     left = board.copy()
@@ -284,19 +294,21 @@ def attach_grading(board: pd.DataFrame, grading: pd.DataFrame | None) -> pd.Data
     for col in ["_ml_correct", "_spread_correct"]:
         out[col] = out[col].astype("boolean")
     out["_spread_source"] = out["_spread_source"].fillna("")
+    out["_closing_source"] = out["_closing_source"].fillna("")
     return out
 
 
 def board_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """Bettor-facing decision table with research plumbing removed."""
     wanted = [
         "Rank", "D1 Rank", "Away Team", "Home Team", "Neutral Site", "Game Classification",
         "Model Pick", "Win Probability", "Projected Away Score", "Projected Home Score",
-        "Fair Spread", "Fair Moneyline", "Projected Total", "Expected Pace", "Confidence Score",
-        "Champion Margin Calibration Adj", "V1.1.3B Margin Adjustment", "V1.0.1 Baseline Pick",
-        "V1.0.1 Baseline Win Probability", "V1.0.1 Baseline Fair Spread", "Home AdjO", "Home AdjD",
-        "Home AdjNet", "Away AdjO", "Away AdjD", "Away AdjNet", "V1.1 Home D1 SOS", "V1.1 Away D1 SOS",
+        "Fair Spread", "Fair Moneyline", "Projected Total", "Expected Pace", "Margin SD",
+        "Home Margin P10", "Home Margin P90", "Home AdjO", "Home AdjD", "Home AdjNet",
+        "Away AdjO", "Away AdjD", "Away AdjNet", "V1.1 Home D1 SOS", "V1.1 Away D1 SOS",
         "Home SOS", "Away SOS", "Home PPG", "Away PPG", "Home PPG Allowed", "Away PPG Allowed",
-        "Data Quality", "Availability Verified",
+        "Home Matchup Adj /100", "Away Matchup Adj /100", "Data Quality", "Availability Verified",
+        *DECISION_HOME_SPREAD_COLUMNS, *CLOSING_HOME_SPREAD_COLUMNS,
     ]
     return frame[[c for c in wanted if c in frame.columns]].copy()
 
