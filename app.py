@@ -109,20 +109,33 @@ def metric_card(label: str, value: str, foot: str = "") -> None:
     )
 
 
+def _numeric_board_series(board: pd.DataFrame, column: str, default: float = np.nan) -> pd.Series:
+    """Return a numeric Series even when an optional column is absent.
+
+    Historical published slates do not contain Champion-only fields.  Returning
+    a Series instead of the scalar produced by ``DataFrame.get`` keeps the UI
+    backward-compatible with those archived boards.
+    """
+    if column in board.columns:
+        return pd.to_numeric(board[column], errors="coerce")
+    return pd.Series(default, index=board.index, dtype=float)
+
+
 def status_strip(report, board: pd.DataFrame) -> None:
     d1_pct = (report.d1_games / report.rows) if report.rows else 0.0
-    adjusted = int((pd.to_numeric(board.get("_display_adj"), errors="coerce").abs() >= 0.05).sum())
-    training_games = pd.to_numeric(board.get("Champion Training Games"), errors="coerce")
-    training_dates = pd.to_numeric(board.get("Champion Training Dates"), errors="coerce")
+    display_adj = _numeric_board_series(board, "_display_adj", 0.0)
+    adjusted = int((display_adj.abs() >= 0.05).sum())
+    training_games = _numeric_board_series(board, "Champion Training Games")
+    training_dates = _numeric_board_series(board, "Champion Training Dates")
     if training_games.notna().any():
         train_text = f"{int(training_games.max()):,} games"
         if training_dates.notna().any():
             train_text += f" / {int(training_dates.max())} dates"
     else:
-        training = pd.to_numeric(board.get("Schedule Translation Training Games"), errors="coerce")
+        training = _numeric_board_series(board, "Schedule Translation Training Games")
         train_text = f"archive: {int(training.max()):,} prior games" if training.notna().any() else "not reported"
-    verified = float(board["_availability_verified"].mean()) if len(board) else 0.0
-    quality = pd.to_numeric(board.get("Data Quality"), errors="coerce").mean()
+    verified = float(board["_availability_verified"].mean()) if len(board) and "_availability_verified" in board.columns else 0.0
+    quality = _numeric_board_series(board, "Data Quality").mean()
     role = "Production champion" if str(report.model_version).upper() == "1.1.3B" else "Historical / challenger board"
     html = f"""
     <div class="status-strip">
@@ -215,7 +228,7 @@ def render_board(board: pd.DataFrame, report) -> None:
     ml_wins = int(graded.get("_ml_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
     spread_known = graded.get("_spread_correct", pd.Series(dtype="boolean")).notna().sum() if len(graded) else 0
     spread_wins = int(graded.get("_spread_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
-    avg_adj = pd.to_numeric(board.get("_display_adj"), errors="coerce").abs().mean()
+    avg_adj = _numeric_board_series(board, "_display_adj", 0.0).abs().mean()
 
     cols = st.columns(6)
     with cols[0]: metric_card("Games", f"{len(board)}", f"{report.d1_games} D-I vs D-I")
