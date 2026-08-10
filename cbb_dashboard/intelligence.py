@@ -144,42 +144,6 @@ def _pick_context(row: pd.Series) -> tuple[str, str, str, str]:
     return pick, opponent, _team_prefix(row, pick), _team_prefix(row, opponent)
 
 
-def pick_margin_interval(row: pd.Series) -> tuple[float, float]:
-    """Return P10/P90 margin from the model-pick perspective."""
-    p10 = _num(row, "Home Margin P10")
-    p90 = _num(row, "Home Margin P90")
-    if not (np.isfinite(p10) and np.isfinite(p90)):
-        return float("nan"), float("nan")
-    pick = str(row.get("Model Pick") or "")
-    home = str(row.get("Home Team") or "")
-    if pick == home:
-        return min(p10, p90), max(p10, p90)
-    return min(-p90, -p10), max(-p90, -p10)
-
-
-def likely_result_text(row: pd.Series) -> str:
-    """Plain-English middle-80% outcome range from the model-pick perspective."""
-    low, high = pick_margin_interval(row)
-    if not (np.isfinite(low) and np.isfinite(high)):
-        return "Range unavailable"
-    if low >= 0:
-        return f"Win by {low:.0f} to {high:.0f}"
-    if high <= 0:
-        return f"Lose by {abs(high):.0f} to {abs(low):.0f}"
-    return f"Lose by {abs(low):.0f} to win by {high:.0f}"
-
-
-def outcome_band_label(row: pd.Series) -> str:
-    low, high = pick_margin_interval(row)
-    if not (np.isfinite(low) and np.isfinite(high)):
-        return "Outcome range unavailable"
-    if low > 0:
-        return "Likely range favors pick"
-    if high < 0:
-        return "Likely range favors opponent"
-    return "Either team can realistically win"
-
-
 def margin_swing_text(row: pd.Series) -> str:
     value = _num(row, "Margin SD")
     if not np.isfinite(value):
@@ -312,10 +276,6 @@ def signal_readout(row: pd.Series) -> tuple[list[str], list[str]]:
     if not _bool(row.get("Availability Verified", False)):
         risks.append("Player availability has not been fully verified, so late lineup news could change the matchup.")
 
-    low, high = pick_margin_interval(row)
-    if np.isfinite(low) and np.isfinite(high) and low <= 0 <= high:
-        risks.append("This game is volatile: the simulations include realistic outcomes where either team wins.")
-
     if not positives:
         positives.append("No single factor dominates. The pick comes from the combined team-strength, matchup, game-speed and simulation picture.")
     if not risks:
@@ -402,7 +362,6 @@ def metric_glossary_html() -> str:
           <div><strong>Defense rating</strong><span>Points allowed per 100 possessions after adjusting for opponent strength. Lower is better.</span></div>
           <div><strong>Overall rating</strong><span>Offense rating minus defense rating. Higher means a stronger overall efficiency profile.</span></div>
           <div><strong>Schedule strength</strong><span>How difficult the team's Division I schedule has been. Higher means tougher competition.</span></div>
-          <div><strong>Likely result range</strong><span>The middle 80% of model simulations for the selected team. It shows realistic good and bad outcomes.</span></div>
           <div><strong>Typical margin swing</strong><span>How uncertain the projected winning margin is. A larger number means a more unpredictable game.</span></div>
           <div><strong>Data confidence</strong><span>How complete and reliable the inputs are for this matchup. Higher is better.</span></div>
           <div><strong>Model-implied odds</strong><span>American odds implied by the model's win probability. This is not a sportsbook quote.</span></div>
@@ -548,7 +507,6 @@ def betting_snapshot_html(row: pd.Series) -> str:
         _profile_metric("Model-implied odds", fmt_odds(row.get("Fair Moneyline")), "not a sportsbook quote", "American odds implied by the model's win probability. This is not a sportsbook price."),
         _profile_metric("Projected combined points", fmt_num(row.get("Projected Total"), 1), "both teams combined", "The model's expected total points scored by both teams."),
         _profile_metric("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "estimated possessions", "Estimated number of possessions in the game. More possessions usually means a faster game."),
-        _profile_metric("Likely result range", likely_result_text(row), "middle 80% of simulations", "A realistic range for how far the selected team could win or lose by in the middle 80% of model simulations."),
         _profile_metric("Data confidence", f"{fmt_num(row.get('Data Quality'),0)}/100", "higher is better", "How complete and reliable the model inputs are for this matchup. Higher is better."),
     ])
     return compact_html(f'<div class="betting-snapshot">{metrics}</div>')
@@ -559,7 +517,6 @@ def dossier_html(row: pd.Series) -> str:
     context = compact_html(f"""
       <div class="dossier-context-grid">
         <div class="dossier-context" title="A plain-language summary of how strongly the model favors the selected team."><span>Pick strength</span><strong>{esc(projection_tier(row))}</strong></div>
-        <div class="dossier-context" title="The middle 80% of simulations for the selected team. It includes realistic good and bad outcomes."><span>Likely result range</span><strong>{esc(likely_result_text(row))}</strong></div>
         <div class="dossier-context" title="How uncertain the projected winning margin is. Bigger numbers mean a more unpredictable game."><span>Typical margin swing</span><strong>{esc(margin_swing_text(row))}</strong></div>
         <div class="dossier-context" title="Whether the model has verified player availability information for this matchup."><span>Player status</span><strong>{esc(availability)}</strong></div>
         <div class="dossier-context"><span>Location</span><strong>{esc(site)}</strong></div>
@@ -599,9 +556,6 @@ def game_card_html(row: pd.Series) -> str:
         chips.append('<span class="chip orange">Neutral court</span>')
     chips.append(f'<span class="chip {"green" if verified else "gold"}">{"Player status verified" if verified else "Player status not verified"}</span>')
     chips.append(f'<span class="chip champion">{esc(model_role(row))}</span>')
-    band = outcome_band_label(row)
-    chips.append(f'<span class="chip {"green" if band.startswith("Likely range favors pick") else "gold"}">{esc(band)}</span>')
-
     decision, _ = decision_home_spread(row)
     selected_decision = selected_team_spread(row, decision)
     gap = model_market_gap(row)

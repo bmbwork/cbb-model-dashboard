@@ -48,7 +48,7 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.3.3"
+APP_VERSION = "1.3.4"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -298,8 +298,8 @@ def render_board(board: pd.DataFrame, report) -> None:
 
     st.markdown('<div class="section-title">Priority board</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-note">Cards show the model pick, projected score and win chance first. Open <strong>Why this pick?</strong> for plain-English reasons, risks and team comparisons.</div>', unsafe_allow_html=True)
-    scope = st.segmented_control("Card depth", ["Top 10", "Top 25", "Top 50", "All"], default="Top 10", label_visibility="collapsed")
-    n = {"Top 10": 10, "Top 25": 25, "Top 50": 50, "All": len(board)}.get(scope, 10)
+    scope = st.segmented_control("Card depth", ["Top 10", "All"], default="Top 10", label_visibility="collapsed")
+    n = {"Top 10": 10, "All": len(board)}.get(scope, 10)
     st.markdown(game_card_grid_html(board.head(n)), unsafe_allow_html=True)
 
     filtered = apply_board_filters(board)
@@ -331,18 +331,17 @@ def render_matchup_explorer(board: pd.DataFrame) -> None:
     st.markdown('<div class="section-title">Team strength comparison</div>', unsafe_allow_html=True)
     st.plotly_chart(team_comparison_chart(row), use_container_width=True)
 
-    st.markdown('<div class="section-title">How much this game could swing</div>', unsafe_allow_html=True)
-    from cbb_dashboard.intelligence import likely_result_text, margin_swing_text
+    st.markdown('<div class="section-title">Game projection</div>', unsafe_allow_html=True)
+    from cbb_dashboard.intelligence import margin_swing_text
     pick = str(row.get("Model Pick") or "Model pick")
     home = str(row.get("Home Team") or "")
     projected_home_margin = pd.to_numeric(row.get("Projected Home Score"), errors="coerce") - pd.to_numeric(row.get("Projected Away Score"), errors="coerce")
     projected_pick_margin = projected_home_margin if pick == home else -projected_home_margin
-    sim = st.columns(5)
-    with sim[0]: metric_card("Likely result range", likely_result_text(row), "Middle 80% of simulations", "A realistic range for how far the selected team could win or lose by in the middle 80% of model simulations.")
-    with sim[1]: metric_card("Projected winning margin", fmt_num(projected_pick_margin, 1, " pts"), f"{pick} perspective", "The model's projected score difference for the selected team.")
-    with sim[2]: metric_card("Typical margin swing", margin_swing_text(row), "Bigger = more unpredictable", "How uncertain the projected winning margin is. Larger numbers mean the final margin can move farther from the projection.")
-    with sim[3]: metric_card("Projected combined points", fmt_num(row.get("Projected Total"), 1), "Both teams combined", "The model's expected total points scored by both teams.")
-    with sim[4]: metric_card("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "Estimated possessions", "Estimated number of possessions. More possessions usually means a faster game.")
+    sim = st.columns(4)
+    with sim[0]: metric_card("Projected winning margin", fmt_num(projected_pick_margin, 1, " pts"), f"{pick} perspective", "The model's projected score difference for the selected team.")
+    with sim[1]: metric_card("Typical margin swing", margin_swing_text(row), "Bigger = more unpredictable", "How uncertain the projected winning margin is. Larger numbers mean the final margin can move farther from the projection.")
+    with sim[2]: metric_card("Projected combined points", fmt_num(row.get("Projected Total"), 1), "Both teams combined", "The model's expected total points scored by both teams.")
+    with sim[3]: metric_card("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "Estimated possessions", "Estimated number of possessions. More possessions usually means a faster game.")
 
     st.markdown(market_context_html(row), unsafe_allow_html=True)
 
@@ -456,8 +455,6 @@ The site is built to answer four simple questions: **Who does the model like? By
 **Model spread** — the point spread implied by the model's projected score. A negative number means the selected team is favored by that many points.
 
 **Model-implied odds** — American odds that match the model's win probability. These are **not** sportsbook odds.
-
-**Likely result range** — a realistic range of outcomes from the model's simulations. For example, “Lose by 4 to win by 12” means the pick is favored overall, but the model still sees believable paths to a loss.
 
 **Data confidence** — a 0–100 score for how complete and reliable the inputs are. Higher is better.
 

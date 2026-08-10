@@ -17,7 +17,7 @@ def test_card_contains_bettor_first_core_fields_without_old_model_audit(board_df
     assert "Chance model pick wins" in html
     assert "Model spread" in html
     assert "Projected combined points" in html
-    assert "Likely result range" in html
+    assert "Likely result range" not in html
     assert "Frozen V1.0.1" not in html
     assert "Schedule Translation" not in html
 
@@ -27,7 +27,7 @@ def test_signal_readout_marks_near_coin_flip_and_uncertainty(board_df):
     _, risks = signal_readout(board.iloc[1])
     joined = " ".join(risks).lower()
     assert "close game" in joined
-    assert "either team wins" in joined
+    assert "either team wins" not in joined
 
 
 def test_team_profile_pair_contains_requested_snapshot_metrics(board_df):
