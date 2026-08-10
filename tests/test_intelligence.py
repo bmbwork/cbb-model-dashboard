@@ -14,10 +14,10 @@ def test_card_contains_bettor_first_core_fields_without_old_model_audit(board_df
     board, _ = normalize_board(board_df)
     html = game_card_html(board.iloc[0])
     assert "Home Tech" in html
-    assert "Model win probability" in html
-    assert "Model line" in html
-    assert "Projected total" in html
-    assert "Pick margin P10–P90" in html
+    assert "Chance model pick wins" in html
+    assert "Model spread" in html
+    assert "Projected combined points" in html
+    assert "Likely result range" in html
     assert "Frozen V1.0.1" not in html
     assert "Schedule Translation" not in html
 
@@ -26,8 +26,8 @@ def test_signal_readout_marks_near_coin_flip_and_uncertainty(board_df):
     board, _ = normalize_board(board_df)
     _, risks = signal_readout(board.iloc[1])
     joined = " ".join(risks).lower()
-    assert "coin flip" in joined
-    assert "crosses zero" in joined
+    assert "close game" in joined
+    assert "either team wins" in joined
 
 
 def test_team_profile_pair_contains_requested_snapshot_metrics(board_df):
@@ -38,7 +38,7 @@ def test_team_profile_pair_contains_requested_snapshot_metrics(board_df):
     raw["Away PPG Allowed"] = [72.0, 68.7]
     board, _ = normalize_board(raw)
     html = team_profile_pair_html(board.iloc[0])
-    for token in ["AdjO", "AdjD", "AdjNet", "D-I SOS", "PPG", "PPG allowed", "Matchup /100"]:
+    for token in ["Offense rating", "Defense rating", "Overall rating", "Schedule strength", "Points / game", "Points allowed / game", "Matchup edge"]:
         assert token in html
     assert "78.4" in html
     assert "66.8" in html
@@ -53,5 +53,5 @@ def test_market_context_is_display_only_and_gap_is_from_pick_perspective(board_d
     assert model_market_gap(row) == 2.0
     html = market_context_html(row)
     assert "Home Tech -7.0" in html
-    assert "+2.0 pts vs model fair" in html
-    assert "not an automatic bet/EV label" in html
+    assert "gives the pick 2.0 more points" in html
+    assert "not an automatic bet recommendation" in html

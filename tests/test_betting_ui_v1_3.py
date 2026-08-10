@@ -36,20 +36,20 @@ def test_closing_only_cannot_create_ats_grade(board_df):
     graded, _ = normalize_graded_board(raw)
     assert pd.isna(graded.loc[0, "_spread_correct"])
     html = game_card_html(graded.iloc[0])
-    assert "ATS <span" not in html
-    assert "ATS <strong>W</strong>" not in html
-    assert "ATS requires a decision/taken line" in html
+    assert "SPREAD <span" not in html
+    assert "SPREAD <strong>W</strong>" not in html
+    assert "spread result needs a pregame/taken line" in html
 
 
 def test_no_market_line_does_not_create_betting_recommendation(board_df):
     board, _ = normalize_board(board_df)
     html = market_context_html(board.iloc[0])
-    assert "No decision-time spread stored" in html
-    assert "No ATS recommendation" in html
+    assert "No pregame sportsbook spread saved" in html
+    assert "will not grade the spread" in html
 
 
 def test_app_version_and_public_page_copy_are_v13():
     app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     tree = ast.parse(app)
-    assert 'APP_VERSION = "1.3"' in app
-    assert "Bettor-first cards emphasize side" in app
+    assert 'APP_VERSION = "1.3.2"' in app
+    assert "Open <strong>Why this pick?</strong>" in app

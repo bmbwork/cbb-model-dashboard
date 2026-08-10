@@ -48,7 +48,7 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.3"
+APP_VERSION = "1.3.2"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -103,18 +103,19 @@ def make_store() -> tuple[SupabaseSlateStore | None, str | None]:
         return None, f"Persistent storage could not initialize: {type(exc).__name__}"
 
 
-def metric_card(label: str, value: str, foot: str = "") -> None:
+def metric_card(label: str, value: str, foot: str = "", tooltip: str = "") -> None:
+    help_html = f'<span class="help-dot" title="{esc(tooltip)}" aria-label="{esc(tooltip)}">?</span>' if tooltip else ""
+    title_attr = f' title="{esc(tooltip)}"' if tooltip else ""
     st.markdown(
         compact_html(f"""
-        <div class="metric-shell">
-          <div class="metric-label">{esc(label)}</div>
+        <div class="metric-shell"{title_attr}>
+          <div class="metric-label">{esc(label)}{help_html}</div>
           <div class="metric-value">{esc(value)}</div>
           <div class="metric-foot">{esc(foot)}</div>
         </div>
         """),
         unsafe_allow_html=True,
     )
-
 
 def _numeric_board_series(board: pd.DataFrame, column: str, default: float = np.nan) -> pd.Series:
     """Return a numeric Series even when an optional column is absent.
@@ -136,16 +137,16 @@ def status_strip(report, board: pd.DataFrame) -> None:
     finals = int(graded_mask.sum())
     spread_known = int(board.loc[graded_mask, "_spread_correct"].notna().sum()) if finals and "_spread_correct" in board.columns else 0
     is_champion = str(report.model_version).upper() == "1.1.3B"
-    engine_value = "Production champion" if is_champion else "Historical board"
+    engine_value = "Production model" if is_champion else "Historical model"
     slate_value = f"Final {finals}/{len(board)}" if finals else "Pregame"
-    slate_detail = f"{spread_known} ATS-gradeable line(s)" if finals else "Published pregame snapshot"
+    slate_detail = f"{spread_known} game(s) have a saved spread" if finals else "Published before games started"
     html = f"""
     <div class="status-strip">
-      <div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Model state</div><div class="status-value">{esc(engine_value)}</div><div class="status-detail">V{esc(report.model_version)}</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot info"></span>D-I cohort</div><div class="status-value">{report.d1_games}/{report.rows} games</div><div class="status-detail">{d1_pct:.0%} primary evaluation coverage</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if verified >= .99 else 'warn'}"></span>Availability</div><div class="status-value">{verified:.0%} verified</div><div class="status-detail">Pregame player-status coverage</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if pd.notna(quality) and quality >= 65 else 'warn'}"></span>Data quality</div><div class="status-value">{fmt_num(quality,0)}/100</div><div class="status-detail">Mean slate quality score</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if finals else 'info'}"></span>Slate state</div><div class="status-value">{esc(slate_value)}</div><div class="status-detail">{esc(slate_detail)}</div></div>
+      <div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Model</div><div class="status-value">{esc(engine_value)}</div><div class="status-detail">Version {esc(report.model_version)}</div></div>
+      <div class="status-item" title="Games where both teams are Division I."><div class="status-top"><span class="status-dot info"></span>Division I games</div><div class="status-value">{report.d1_games}/{report.rows} games</div><div class="status-detail">{d1_pct:.0%} of this slate</div></div>
+      <div class="status-item" title="How much of the slate has verified pregame player availability information."><div class="status-top"><span class="status-dot {'fresh' if verified >= .99 else 'warn'}"></span>Player status</div><div class="status-value">{verified:.0%} verified</div><div class="status-detail">Pregame availability coverage</div></div>
+      <div class="status-item" title="A 0-100 score for how complete and reliable the model inputs are. Higher is better."><div class="status-top"><span class="status-dot {'fresh' if pd.notna(quality) and quality >= 65 else 'warn'}"></span>Data confidence</div><div class="status-value">{fmt_num(quality,0)}/100</div><div class="status-detail">Average input quality</div></div>
+      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if finals else 'info'}"></span>Game results</div><div class="status-value">{esc(slate_value)}</div><div class="status-detail">{esc(slate_detail)}</div></div>
     </div>
     """
     st.markdown(compact_html(html), unsafe_allow_html=True)
@@ -190,6 +191,8 @@ def render_empty_state(store_error: str | None) -> None:
 
 def format_board_for_table(board: pd.DataFrame) -> pd.DataFrame:
     out = board_table(board)
+    # Remove simulation internals from the public table; the card translates them into a plain-English outcome range.
+    out = out.drop(columns=[c for c in ["Home Margin P10", "Home Margin P90"] if c in out.columns], errors="ignore")
     if "Win Probability" in out.columns:
         out["Win Probability"] = pd.to_numeric(out["Win Probability"], errors="coerce").map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
     spread_columns = [
@@ -199,6 +202,49 @@ def format_board_for_table(board: pd.DataFrame) -> pd.DataFrame:
     for c in spread_columns:
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").map(lambda x: f"{x:+.1f}" if pd.notna(x) else "—")
+
+    # Prefer the Division I schedule-strength fields when both old and new aliases exist.
+    if "V1.1 Home D1 SOS" in out.columns:
+        out = out.drop(columns=["Home SOS"], errors="ignore")
+    if "V1.1 Away D1 SOS" in out.columns:
+        out = out.drop(columns=["Away SOS"], errors="ignore")
+
+    rename = {
+        "D1 Rank": "Division I Rank",
+        "Game Classification": "Game Type",
+        "Fair Spread": "Model Spread",
+        "Fair Moneyline": "Model-Implied Odds",
+        "Projected Total": "Projected Combined Points",
+        "Expected Pace": "Projected Game Speed",
+        "Margin SD": "Typical Margin Swing",
+        "Home AdjO": "Home Offense Rating",
+        "Home AdjD": "Home Defense Rating",
+        "Home AdjNet": "Home Overall Rating",
+        "Away AdjO": "Away Offense Rating",
+        "Away AdjD": "Away Defense Rating",
+        "Away AdjNet": "Away Overall Rating",
+        "V1.1 Home D1 SOS": "Home Schedule Strength",
+        "V1.1 Away D1 SOS": "Away Schedule Strength",
+        "Home SOS": "Home Schedule Strength",
+        "Away SOS": "Away Schedule Strength",
+        "Home PPG": "Home Points / Game",
+        "Away PPG": "Away Points / Game",
+        "Home PPG Allowed": "Home Points Allowed / Game",
+        "Away PPG Allowed": "Away Points Allowed / Game",
+        "Home Matchup Adj /100": "Home Matchup Edge",
+        "Away Matchup Adj /100": "Away Matchup Edge",
+        "Data Quality": "Data Confidence",
+        "Availability Verified": "Player Status Verified",
+        "Bet Home Spread": "Saved Home Spread",
+        "Taken Home Spread": "Saved Home Spread",
+        "Decision Home Spread": "Saved Home Spread",
+        "Market Home Spread": "Saved Home Spread",
+        "Sportsbook Home Spread": "Saved Home Spread",
+        "Closing Home Spread": "Closing Home Spread",
+    }
+    out = out.rename(columns=rename)
+    # Duplicate aliases can occur when multiple market spread fields are published. Keep the first visible copy.
+    out = out.loc[:, ~out.columns.duplicated()].copy()
     return out
 
 def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
@@ -208,17 +254,17 @@ def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
     with c1:
         selected_teams = st.multiselect("Teams", teams, placeholder="All teams")
     with c2:
-        cohort = st.selectbox("Evaluation cohort", ["All games", "D-I vs D-I only", "Non-primary only"])
+        cohort = st.selectbox("Game type", ["All games", "Division I vs Division I", "Other games"])
     with c3:
-        confidence_floor = st.slider("Minimum win probability", 50, 95, 50, 1)
+        confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1, help="Only show picks where the model gives its selected team at least this chance to win.")
     with c4:
-        verified_only = st.toggle("Availability verified only", value=False)
+        verified_only = st.toggle("Verified player status only", value=False, help="Show only games where player availability was explicitly verified before tip-off.")
     filtered = board.copy()
     if selected_teams:
         filtered = filtered[filtered["Home Team"].isin(selected_teams) | filtered["Away Team"].isin(selected_teams)]
-    if cohort == "D-I vs D-I only":
+    if cohort == "Division I vs Division I":
         filtered = filtered[filtered["_is_d1"]]
-    elif cohort == "Non-primary only":
+    elif cohort == "Other games":
         filtered = filtered[~filtered["_is_d1"]]
     filtered = filtered[filtered["_win_prob"] >= confidence_floor / 100.0]
     if verified_only:
@@ -236,32 +282,33 @@ def render_board(board: pd.DataFrame, report) -> None:
     clear_sides = int((pd.to_numeric(board["Win Probability"], errors="coerce") >= 0.60).sum())
 
     cols = st.columns(6)
-    with cols[0]: metric_card("Games", f"{len(board)}", f"{report.d1_games} D-I vs D-I")
-    with cols[1]: metric_card("Strongest side", str(strongest.get("Model Pick")) if strongest is not None else "—", fmt_pct(strongest.get("Win Probability")) if strongest is not None else "")
-    with cols[2]: metric_card("60%+ sides", f"{clear_sides}", "Descriptive projection threshold")
-    with cols[3]: metric_card("Neutral court", f"{int(board['_neutral'].sum())}", "Tournament / neutral-site flag")
-    with cols[4]: metric_card("ML grade", f"{ml_wins}-{len(graded)-ml_wins}" if len(graded) else "Pregame", "Official finals")
-    with cols[5]: metric_card("ATS grade", f"{spread_wins}-{int(spread_known)-spread_wins}" if spread_known else "—", "Decision/taken line only")
+    with cols[0]: metric_card("Games", f"{len(board)}", f"{report.d1_games} Division I matchups", "Division I matchup means both teams are Division I.")
+    with cols[1]: metric_card("Strongest pick", str(strongest.get("Model Pick")) if strongest is not None else "—", fmt_pct(strongest.get("Win Probability")) if strongest is not None else "", "The team with the highest model win chance on this slate.")
+    with cols[2]: metric_card("Strong model leans", f"{clear_sides}", "60%+ model win chance", "Number of picks where the model gives its selected team at least a 60% chance to win.")
+    with cols[3]: metric_card("Neutral court", f"{int(board['_neutral'].sum())}", "No home-court location advantage")
+    with cols[4]: metric_card("Winner picks", f"{ml_wins}-{len(graded)-ml_wins}" if len(graded) else "Pregame", "Straight-up game winners", "Moneyline / straight-up grading: did the model pick the team that won?")
+    with cols[5]: metric_card("Spread picks", f"{spread_wins}-{int(spread_known)-spread_wins}" if spread_known else "—", "Only when a pregame line is saved", "Spread grading uses the saved pregame or taken sportsbook line. The closing line is tracked separately.")
 
     if len(graded):
-        spread_note = f'<span class="grade-summary-pill gold">ATS {spread_wins}-{int(spread_known)-spread_wins}</span>' if spread_known else '<span class="grade-summary-pill muted">ATS — no decision/taken line</span>'
-        st.markdown(f'<div class="grade-summary-strip"><span class="grade-summary-pill green">ML {ml_wins}-{len(graded)-ml_wins}</span>{spread_note}<span class="grade-summary-pill muted">{len(graded)} final games attached</span></div>', unsafe_allow_html=True)
+        spread_note = f'<span class="grade-summary-pill gold">SPREAD {spread_wins}-{int(spread_known)-spread_wins}</span>' if spread_known else '<span class="grade-summary-pill muted">SPREAD — no pregame line saved</span>'
+        st.markdown(f'<div class="grade-summary-strip"><span class="grade-summary-pill green">ML {ml_wins}-{len(graded)-ml_wins}</span>{spread_note}<span class="grade-summary-pill muted">{len(graded)} final games</span></div>', unsafe_allow_html=True)
 
     for warning in report.warnings:
         st.warning(warning, icon="⚠️")
 
     st.markdown('<div class="section-title">Priority board</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-note">Bettor-first cards emphasize side, model price, projected score and uncertainty. Open the dossier for the matchup thesis, risks, team profiles and any stored market context.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">Cards show the model pick, projected score and win chance first. Open <strong>Why this pick?</strong> for plain-English reasons, risks and team comparisons.</div>', unsafe_allow_html=True)
     scope = st.segmented_control("Card depth", ["Top 10", "Top 25", "Top 50", "All"], default="Top 10", label_visibility="collapsed")
     n = {"Top 10": 10, "Top 25": 25, "Top 50": 50, "All": len(board)}.get(scope, 10)
     st.markdown(game_card_grid_html(board.head(n)), unsafe_allow_html=True)
 
     filtered = apply_board_filters(board)
     st.markdown(f'<div class="section-title">Full decision board ({len(filtered)})</div>', unsafe_allow_html=True)
+    st.caption("Hover over unfamiliar card metrics for definitions. The full table uses plain-English column names; technical model field names are hidden.")
     st.dataframe(format_board_for_table(filtered), use_container_width=True, hide_index=True, height=min(700, 70 + 35 * max(4, len(filtered))))
 
     if len(d1) >= 2:
-        st.markdown('<div class="section-title">Slate confidence map</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Strongest model picks</div>', unsafe_allow_html=True)
         st.plotly_chart(confidence_chart(d1, top_n=min(25, len(d1))), use_container_width=True)
 
 def matchup_label(row: pd.Series) -> str:
@@ -270,7 +317,7 @@ def matchup_label(row: pd.Series) -> str:
 
 
 def render_matchup_explorer(board: pd.DataFrame) -> None:
-    st.markdown('<div class="cbb-kicker">GAME-LEVEL BETTING INTELLIGENCE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-kicker">GAME BREAKDOWN</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Matchup Explorer</div>', unsafe_allow_html=True)
     labels = {matchup_label(row): idx for idx, row in board.iterrows()}
     choice = st.selectbox("Select a matchup", list(labels.keys()))
@@ -281,16 +328,21 @@ def render_matchup_explorer(board: pd.DataFrame) -> None:
     st.markdown(team_profile_pair_html(row), unsafe_allow_html=True)
     st.markdown(matchup_battle_html(row), unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Efficiency comparison</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Team strength comparison</div>', unsafe_allow_html=True)
     st.plotly_chart(team_comparison_chart(row), use_container_width=True)
 
-    st.markdown('<div class="section-title">Simulation and uncertainty</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">How much this game could swing</div>', unsafe_allow_html=True)
+    from cbb_dashboard.intelligence import likely_result_text, margin_swing_text
+    pick = str(row.get("Model Pick") or "Model pick")
+    home = str(row.get("Home Team") or "")
+    projected_home_margin = pd.to_numeric(row.get("Projected Home Score"), errors="coerce") - pd.to_numeric(row.get("Projected Away Score"), errors="coerce")
+    projected_pick_margin = projected_home_margin if pick == home else -projected_home_margin
     sim = st.columns(5)
-    with sim[0]: metric_card("Home margin P10", fmt_num(row.get("Home Margin P10"), 1), "10th percentile")
-    with sim[1]: metric_card("Expected home margin", fmt_num(pd.to_numeric(row.get("Projected Home Score"), errors="coerce") - pd.to_numeric(row.get("Projected Away Score"), errors="coerce"), 1), "Projected score gap")
-    with sim[2]: metric_card("Home margin P90", fmt_num(row.get("Home Margin P90"), 1), "90th percentile")
-    with sim[3]: metric_card("Margin SD", fmt_num(row.get("Margin SD"), 1), "Single-game variance")
-    with sim[4]: metric_card("Projected total", fmt_num(row.get("Projected Total"), 1), "Market-blind total")
+    with sim[0]: metric_card("Likely result range", likely_result_text(row), "Middle 80% of simulations", "A realistic range for how far the selected team could win or lose by in the middle 80% of model simulations.")
+    with sim[1]: metric_card("Projected winning margin", fmt_num(projected_pick_margin, 1, " pts"), f"{pick} perspective", "The model's projected score difference for the selected team.")
+    with sim[2]: metric_card("Typical margin swing", margin_swing_text(row), "Bigger = more unpredictable", "How uncertain the projected winning margin is. Larger numbers mean the final margin can move farther from the projection.")
+    with sim[3]: metric_card("Projected combined points", fmt_num(row.get("Projected Total"), 1), "Both teams combined", "The model's expected total points scored by both teams.")
+    with sim[4]: metric_card("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "Estimated possessions", "Estimated number of possessions. More possessions usually means a faster game.")
 
     st.markdown(market_context_html(row), unsafe_allow_html=True)
 
@@ -310,31 +362,33 @@ def render_team_intelligence(board: pd.DataFrame) -> None:
     opponent = str(row.get("Away Team" if home else "Home Team"))
     model_pick = str(row.get("Model Pick") or "")
     pick_note = "MODEL PICK" if model_pick == team else f"MODEL PREFERS {model_pick}"
-    st.markdown(f'<div class="team-dossier-hero"><div><span>{esc(pick_note)}</span><strong>{esc(team)}</strong><p>vs {esc(opponent)} · {"neutral court" if bool(row.get("Neutral Site",False)) else "scheduled site"}</p></div><div><span>MODEL WIN PROBABILITY</span><strong>{fmt_pct(row.get("Win Probability")) if model_pick == team else fmt_pct(1-float(pd.to_numeric(row.get("Win Probability"), errors="coerce")))}</strong><p>Current published matchup</p></div></div>', unsafe_allow_html=True)
+    model_prob = pd.to_numeric(row.get("Win Probability"), errors="coerce")
+    team_prob = model_prob if model_pick == team else (1 - model_prob if pd.notna(model_prob) else np.nan)
+    st.markdown(f'<div class="team-dossier-hero"><div><span>{esc(pick_note)}</span><strong>{esc(team)}</strong><p>vs {esc(opponent)} · {"neutral court" if bool(row.get("Neutral Site",False)) else "scheduled site"}</p></div><div><span>CHANCE TO WIN</span><strong>{fmt_pct(team_prob)}</strong><p>According to the current model</p></div></div>', unsafe_allow_html=True)
 
     cols = st.columns(6)
     ppg = row.get(f"{prefix} PPG", row.get(f"{prefix} Points Per Game"))
     ppga = row.get(f"{prefix} PPG Allowed", row.get(f"{prefix} Points Allowed Per Game"))
     metrics = [
-        ("AdjO", row.get(f"{prefix} AdjO"), "offense /100"),
-        ("AdjD", row.get(f"{prefix} AdjD"), "lower better"),
-        ("AdjNet", row.get(f"{prefix} AdjNet"), "efficiency margin"),
-        ("D-I SOS", row.get(f"V1.1 {prefix} D1 SOS", row.get(f"{prefix} SOS")), "schedule strength"),
-        ("PPG", ppg, "pregame descriptive"),
-        ("PPG allowed", ppga, "pregame descriptive"),
+        ("Offense rating", row.get(f"{prefix} AdjO"), "higher is better", "Opponent-adjusted points scored per 100 possessions."),
+        ("Defense rating", row.get(f"{prefix} AdjD"), "lower is better", "Opponent-adjusted points allowed per 100 possessions."),
+        ("Overall rating", row.get(f"{prefix} AdjNet"), "higher is better", "Offense rating minus defense rating."),
+        ("Schedule strength", row.get(f"V1.1 {prefix} D1 SOS", row.get(f"{prefix} SOS")), "higher = tougher", "How difficult the team's Division I schedule has been."),
+        ("Points / game", ppg, "pregame average", "Average points scored per game before this matchup."),
+        ("Points allowed / game", ppga, "pregame average", "Average points allowed per game before this matchup."),
     ]
-    for col, (label, value, foot) in zip(cols, metrics):
-        with col: metric_card(label, fmt_num(value, 1), foot)
+    for col, (label, value, foot, tip) in zip(cols, metrics):
+        with col: metric_card(label, fmt_num(value, 1), foot, tip)
     if pd.isna(pd.to_numeric(ppg, errors="coerce")) or pd.isna(pd.to_numeric(ppga, errors="coerce")):
-        st.caption("PPG and PPG allowed remain blank until the production board exports true pregame descriptive values. Projected scores are never substituted for them.")
+        st.caption("Points-per-game averages are blank until the production board publishes true pregame values. Projected scores are never substituted for them.")
 
     st.markdown('<div class="section-title">Head-to-head profile</div>', unsafe_allow_html=True)
     st.markdown(team_profile_pair_html(row, focus_team=team), unsafe_allow_html=True)
     st.markdown(matchup_battle_html(row, focus_team=team), unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Model thesis and risk</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Why the model likes its pick — and what could go wrong</div>', unsafe_allow_html=True)
     if model_pick != team:
-        st.info(f"The current model pick is {model_pick}. The thesis below explains the selected side; use the team profile above to evaluate {team}'s path to outperform it.")
+        st.info(f"The current model pick is {model_pick}. The reasons below explain that selection; use the team comparison above to see how {team} could outperform it.")
     st.markdown(evidence_html(row), unsafe_allow_html=True)
     st.markdown(market_context_html(row), unsafe_allow_html=True)
     st.plotly_chart(team_comparison_chart(row), use_container_width=True)
@@ -343,25 +397,30 @@ def render_team_intelligence(board: pd.DataFrame) -> None:
     st.dataframe(format_board_for_table(rows), use_container_width=True, hide_index=True)
 
 def render_performance_lab(records: list[dict[str, Any]]) -> None:
-    st.markdown('<div class="cbb-kicker">PRODUCTION EVIDENCE</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Performance Laboratory</div>', unsafe_allow_html=True)
-    st.markdown('<div class="firewall-note"><strong>Observational only:</strong> grading and market results are downstream measurements. They never feed back into a production prediction.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-kicker">HOW THE MODEL HAS PERFORMED</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Performance Lab</div>', unsafe_allow_html=True)
+    st.markdown('<div class="firewall-note"><strong>Results only:</strong> this page measures past predictions. It never changes future predictions.</div>', unsafe_allow_html=True)
     graded_records = [r for r in records if r.get("grading_json")]
     champion_records = [r for r in graded_records if str(r.get("model_version") or "").upper() == "1.1.3B"]
     scoped = champion_records if champion_records else graded_records
-    scope_label = "V1.1.3B production champion" if champion_records else "Historical published archive (champion results not yet published)"
+    scope_label = "V1.1.3B production model" if champion_records else "Historical published archive (production-model results not yet published)"
     st.caption(scope_label)
     agg = aggregate_metrics(scoped)
     if not agg.get("games"):
-        st.info("No graded games are available in the production evidence scope yet.")
+        st.info("No graded games are available yet.")
         return
-    cols = st.columns(6)
-    with cols[0]: metric_card("D-I games", f"{int(agg.get('games',0)):,}", "Primary cohort")
-    with cols[1]: metric_card("Winner accuracy", fmt_pct(agg.get("winner_accuracy")), scope_label)
-    with cols[2]: metric_card("Brier", fmt_num(agg.get("brier"), 3), "Lower is better")
-    with cols[3]: metric_card("Log loss", fmt_num(agg.get("log_loss"), 3), "Lower is better")
-    with cols[4]: metric_card("Margin MAE", fmt_num(agg.get("margin_mae"), 2), "Points")
-    with cols[5]: metric_card("Total MAE", fmt_num(agg.get("total_mae"), 2), "Points")
+
+    cols = st.columns(4)
+    with cols[0]: metric_card("Games graded", f"{int(agg.get('games',0)):,}", "Division I matchups", "Games where both teams are Division I and an official final score was available.")
+    with cols[1]: metric_card("Winner accuracy", fmt_pct(agg.get("winner_accuracy")), "How often the picked team won")
+    with cols[2]: metric_card("Average margin miss", fmt_num(agg.get("margin_mae"), 2, " pts"), "Lower is better", "Average number of points the projected winning margin missed the actual final margin by.")
+    with cols[3]: metric_card("Average total-points miss", fmt_num(agg.get("total_mae"), 2, " pts"), "Lower is better", "Average number of points the projected combined score missed the actual combined score by.")
+
+    with st.expander("Advanced probability checks", expanded=False):
+        st.caption("These are technical ways to test whether the model's confidence percentages are trustworthy. Lower is better for both.")
+        c1, c2 = st.columns(2)
+        with c1: metric_card("Probability error (Brier score)", fmt_num(agg.get("brier"), 3), "Lower is better", "Measures how close predicted win probabilities were to actual results. Confident wrong picks are penalized.")
+        with c2: metric_card("Confidence penalty (log loss)", fmt_num(agg.get("log_loss"), 3), "Lower is better", "Penalizes incorrect predictions more heavily when the model was very confident.")
 
     hist = history_frame(scoped)
     buckets = confidence_buckets(scoped)
@@ -373,44 +432,58 @@ def render_performance_lab(records: list[dict[str, Any]]) -> None:
         if not buckets.empty:
             st.plotly_chart(calibration_chart(buckets), use_container_width=True)
     with c2:
-        st.markdown('<div class="section-title">Top-K winner separation</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">How the strongest picks performed</div>', unsafe_allow_html=True)
         if not topk.empty:
             display = topk.copy()
             display["Accuracy"] = display["Accuracy"].map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
             st.dataframe(display, use_container_width=True, hide_index=True)
 
-    st.markdown('<div class="section-title">Slate archive</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Past slates</div>', unsafe_allow_html=True)
     if not hist.empty:
-        columns = [c for c in ["Slate Date", "Games", "Winner Accuracy", "Brier", "Log Loss", "Margin MAE", "Total MAE"] if c in hist.columns]
-        display_hist = hist[columns].copy()
+        columns = [c for c in ["Slate Date", "Games", "Winner Accuracy", "Margin MAE", "Total MAE"] if c in hist.columns]
+        display_hist = hist[columns].copy().rename(columns={"Margin MAE":"Average Margin Miss", "Total MAE":"Average Total Miss"})
         if "Winner Accuracy" in display_hist.columns:
             display_hist["Winner Accuracy"] = display_hist["Winner Accuracy"].map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
         st.dataframe(display_hist.sort_values("Slate Date", ascending=False), use_container_width=True, hide_index=True)
 
 def render_model_guide() -> None:
-    st.markdown('<div class="cbb-kicker">MODEL DOCUMENTATION</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Champion Terminal Guide</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-kicker">HOW TO READ THE SITE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Plain-English Guide</div>', unsafe_allow_html=True)
     st.markdown(
         """
-**Production forecast.** The public site presents the current champion forecast as a single production model. Development coefficients, old challenger mechanics and version-to-version plumbing are intentionally kept off the bettor-facing cards.
+The site is built to answer four simple questions: **Who does the model like? By how much? Why? What could go wrong?**
 
-**Primary cohort.** D-I vs D-I games remain the primary performance population. Non-D-I games can stay visible but do not drive the main evidence summary.
+**Model spread** — the point spread implied by the model's projected score. A negative number means the selected team is favored by that many points.
 
-**Game Intelligence Dossier.** Each card separates the model thesis from the risk case, then shows the two team profiles, adjusted offense/defense/net efficiency, D-I schedule strength, matchup context, pace, uncertainty and availability.
+**Model-implied odds** — American odds that match the model's win probability. These are **not** sportsbook odds.
 
-**Model line vs sportsbook line.** `Model line` and `Model fair ML` are forecasts, not recorded wagers. Market data is display-only and downstream. The site never changes the production prediction because a sportsbook moves.
+**Likely result range** — a realistic range of outcomes from the model's simulations. For example, “Lose by 4 to win by 12” means the pick is favored overall, but the model still sees believable paths to a loss.
 
-**ATS grading.** A spread result is graded only against a stored decision-time/taken spread (or an explicit ATS result from the grader). A closing line is stored separately for CLV reference and is never substituted as the bet line.
+**Data confidence** — a 0–100 score for how complete and reliable the inputs are. Higher is better.
 
-**No automatic bet labels.** A model/market gap is not automatically called +EV, BET, LEAN or PASS. Those labels require separate validation of the downstream decision layer.
+**Player status** — whether player availability was verified before the game. If it says “not verified,” late injury or lineup news is a meaningful risk.
+
+**Offense rating** — opponent-adjusted scoring efficiency. Higher is better.
+
+**Defense rating** — opponent-adjusted points allowed. Lower is better.
+
+**Overall rating** — offense rating minus defense rating. Higher is better.
+
+**Schedule strength** — how difficult the team's Division I schedule has been. Higher means tougher competition.
+
+**Typical margin swing** — how unpredictable the game's final margin is around the projection. Bigger means more uncertainty.
+
+**Sportsbook comparison** — shown only when a pregame sportsbook line was saved. It is display-only and never changes the production prediction.
+
+**ML** — moneyline / straight-up winner. The model gets an ML win when it picked the team that won the game.
+
+**Spread** — graded only against a saved pregame or taken sportsbook spread. The closing line is tracked separately and never substituted for the line that was actually available.
         """
     )
-    st.markdown('<div class="section-title">Reading a game card</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Why some technical metrics are hidden</div>', unsafe_allow_html=True)
     st.markdown(
         """
-The headline answers **who**, **by how much**, and **with what probability**. The score box gives the projected game score. The six-tile betting snapshot adds the model line, model fair moneyline, projected total, pace, pick-side P10–P90 margin band and data quality. The dossier answers **why the model likes the side**, **what can beat it**, and **how the two teams compare**.
-
-After grading, a green **W** treatment marks a winning ML or ATS result. If both ML and ATS win, the game receives the stronger gold sweep banner. ATS stays ungraded when no decision/taken line was stored.
+The public cards intentionally hide development terminology, raw model field names and statistical abbreviations that do not help a bettor make a quick decision. Technical probability checks such as Brier score and log loss remain available inside the **Advanced probability checks** section of the Performance Lab, with definitions.
         """
     )
 
@@ -434,7 +507,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
         if board_upload is not None:
             try:
                 candidate, report = normalize_board(read_csv(board_upload))
-                st.success(f"Validated V{report.model_version} • {report.slate_date} • {report.rows} games • {report.d1_games} primary D-I games")
+                st.success(f"Validated V{report.model_version} • {report.slate_date} • {report.rows} games • {report.d1_games} Division I games")
                 st.dataframe(format_board_for_table(candidate.head(20)), use_container_width=True, hide_index=True)
                 confirm = st.checkbox("I reviewed this board and authorize publication.", key="confirm_board_publish")
                 if st.button("Publish decision board", type="primary", disabled=not confirm):

@@ -288,5 +288,17 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
   .team-dossier-hero > div:last-child { text-align:left; }
 }
 
+
+.help-dot { display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border-radius:50%; border:1px solid rgba(231,203,188,.30); color:#ccb9af; font-size:.52rem; font-weight:950; line-height:1; cursor:help; vertical-align:1px; text-transform:none; letter-spacing:0; }
+.metric-shell[title], .profile-metric[title], .dossier-context[title], .battle-card[title] { cursor:help; }
+.metric-glossary { margin-top:10px; border:1px solid rgba(231,203,188,.10); border-radius:11px; background:rgba(255,255,255,.015); }
+.metric-glossary > summary { cursor:pointer; list-style:none; padding:9px 10px; color:#cdbbb2; font-size:.66rem; font-weight:900; }
+.metric-glossary > summary::-webkit-details-marker { display:none; }
+.metric-glossary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; padding:0 10px 10px; }
+.metric-glossary-grid > div { border:1px solid rgba(231,203,188,.08); border-radius:9px; padding:8px; background:rgba(255,255,255,.012); }
+.metric-glossary-grid strong { display:block; color:#fff6ef; font-size:.65rem; }
+.metric-glossary-grid span { display:block; color:#927f77; font-size:.58rem; line-height:1.42; margin-top:2px; }
+@media (max-width:700px) { .metric-glossary-grid { grid-template-columns:1fr; } }
+
 </style>
 """

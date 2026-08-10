@@ -196,9 +196,9 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
         warnings.append("Player availability is unverified across this slate; player-impact adjustments should be read cautiously.")
     non_d1 = int((~board["_is_d1"]).sum())
     if non_d1:
-        warnings.append(f"{non_d1} game(s) are excluded from the primary D-I vs D-I evaluation cohort.")
+        warnings.append(f"{non_d1} game(s) are outside the main Division I-vs-Division I evaluation group.")
     if (board["_data_quality"].dropna() < 50).any():
-        warnings.append("At least one game has Data Quality below 50.")
+        warnings.append("At least one game has low data confidence (below 50/100).")
 
     board = board.sort_values(["_rank", "_win_prob"], ascending=[True, False], kind="stable").reset_index(drop=True)
     report = BoardReport(

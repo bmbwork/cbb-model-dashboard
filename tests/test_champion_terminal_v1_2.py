@@ -41,16 +41,16 @@ def test_card_grid_is_compacted_to_prevent_markdown_code_blocks(board_df):
     html = game_card_grid_html(board)
     assert html.count('class="game-card ') == 2
     assert "\n" not in html
-    assert "Game Intelligence Dossier" in html
+    assert "Why this pick?" in html
     assert "WHY THE MODEL LIKES Home Tech" in html
 
 
 def test_bettor_facing_champion_card_hides_research_plumbing(board_df):
     board, _ = normalize_board(_champion_board(board_df))
     html = game_card_html(board.iloc[0])
-    assert "Production champion" in html
-    assert "Model line" in html
-    assert "Model fair ML" in html
+    assert "Production model" in html
+    assert "Model spread" in html
+    assert "Model-implied odds" in html
     assert "B calibration" not in html
     assert "Frozen V1.0.1" not in html
     assert "V1.1 translation" not in html
@@ -67,10 +67,10 @@ def test_ml_and_decision_spread_w_are_displayable(board_df):
     merged = attach_grading(board, raw)
     html = game_card_html(merged.iloc[0])
     assert "ML <strong>W</strong>" in html
-    assert "ATS <strong>W</strong>" in html
-    assert "ML + ATS SWEEP" in html
-    assert "ATS line: Home Tech -6.5" in html
-    assert "CLV +1.5 pts" in html
+    assert "SPREAD <strong>W</strong>" in html
+    assert "ML + SPREAD SWEEP" in html
+    assert "Saved spread: Home Tech -6.5" in html
+    assert "Beat closing line by 1.5 pts" in html
 
 
 def test_fair_spread_and_closing_spread_are_not_used_as_ats_line(board_df):

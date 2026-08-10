@@ -65,22 +65,20 @@ def confidence_band(row: pd.Series) -> str:
 def projection_tier(row: pd.Series) -> str:
     p = _num(row, "Win Probability")
     if not np.isfinite(p):
-        return "Projection unavailable"
+        return "Pick strength unavailable"
     if p >= 0.70:
-        return "Clear model favorite"
+        return "Strong model favorite"
     if p >= 0.58:
         return "Model favorite"
-    return "Near coin flip"
-
+    return "Close game"
 
 def model_role(row: pd.Series) -> str:
     version = str(row.get("Model Version") or "").upper()
     if version == "1.1.3B":
-        return "Production champion"
+        return "Production model"
     if version == "1.1.3E":
-        return "Research challenger"
-    return "Historical board"
-
+        return "Research model"
+    return "Historical model"
 
 def calibration_direction(row: pd.Series) -> str:
     """Backward-compatible diagnostic helper.
@@ -159,16 +157,45 @@ def pick_margin_interval(row: pd.Series) -> tuple[float, float]:
     return min(-p90, -p10), max(-p90, -p10)
 
 
+def likely_result_text(row: pd.Series) -> str:
+    """Plain-English middle-80% outcome range from the model-pick perspective."""
+    low, high = pick_margin_interval(row)
+    if not (np.isfinite(low) and np.isfinite(high)):
+        return "Range unavailable"
+    if low >= 0:
+        return f"Win by {low:.0f} to {high:.0f}"
+    if high <= 0:
+        return f"Lose by {abs(high):.0f} to {abs(low):.0f}"
+    return f"Lose by {abs(low):.0f} to win by {high:.0f}"
+
+
 def outcome_band_label(row: pd.Series) -> str:
     low, high = pick_margin_interval(row)
     if not (np.isfinite(low) and np.isfinite(high)):
-        return "Outcome band unavailable"
+        return "Outcome range unavailable"
     if low > 0:
-        return "Pick-positive P10–P90 band"
+        return "Likely range favors pick"
     if high < 0:
-        return "Simulation band conflicts with pick"
-    return "Two-way P10–P90 band"
+        return "Likely range favors opponent"
+    return "Either team can realistically win"
 
+
+def margin_swing_text(row: pd.Series) -> str:
+    value = _num(row, "Margin SD")
+    if not np.isfinite(value):
+        return "—"
+    return f"{value:.1f} pts"
+
+
+def closing_line_edge_text(row: pd.Series) -> str:
+    value = clv_points(row)
+    if not np.isfinite(value):
+        return ""
+    if abs(value) < 0.05:
+        return "Matched the closing line"
+    if value > 0:
+        return f"Beat closing line by {value:.1f} pts"
+    return f"Worse than closing line by {abs(value):.1f} pts"
 
 def _first_row_numeric(row: pd.Series, names: Iterable[str]) -> tuple[float, str | None]:
     for name in names:
@@ -238,64 +265,62 @@ def signal_readout(row: pd.Series) -> tuple[list[str], list[str]]:
         diff = home_net - away_net
         signed = diff if pick_is_home else -diff
         if signed >= 3:
-            positives.append(f"Adjusted net efficiency favors {pick} by {signed:.1f} points per 100 possessions.")
+            positives.append(f"{pick} has the stronger overall team-efficiency profile by {signed:.1f} points.")
         elif signed <= -3:
-            risks.append(f"Adjusted net efficiency favors {opponent} by {abs(signed):.1f} points per 100 possessions.")
+            risks.append(f"{opponent} has the stronger overall team-efficiency profile by {abs(signed):.1f} points.")
 
     pick_o = _team_value(row, pick, "AdjO")
     pick_d = _team_value(row, pick, "AdjD")
     opp_o = _team_value(row, opponent, "AdjO")
     opp_d = _team_value(row, opponent, "AdjD")
-    if np.isfinite(pick_o):
-        if pick_o >= 116:
-            positives.append(f"{pick} brings a high-end adjusted offense ({pick_o:.1f}/100).")
+    if np.isfinite(pick_o) and pick_o >= 116:
+        positives.append(f"{pick} rates as a high-end offense after adjusting for opponent strength (offense rating {pick_o:.1f}).")
     if np.isfinite(pick_d) and pick_d <= 99:
-        positives.append(f"{pick}'s adjusted defense is strong ({pick_d:.1f} allowed/100; lower is better).")
+        positives.append(f"{pick} rates as a strong defense after adjusting for opponent strength (defense rating {pick_d:.1f}; lower is better).")
     if np.isfinite(opp_d):
         if opp_d >= 108:
-            positives.append(f"{opponent}'s adjusted defense has been permissive ({opp_d:.1f} allowed/100).")
+            positives.append(f"{opponent}'s defense has been easier to score on than most (defense rating {opp_d:.1f}).")
         elif opp_d <= 98:
-            risks.append(f"{opponent} owns a strong adjusted defense ({opp_d:.1f} allowed/100).")
+            risks.append(f"{opponent} has a strong defense (defense rating {opp_d:.1f}; lower is better).")
     if np.isfinite(opp_o) and opp_o >= 116:
-        risks.append(f"{opponent} carries a high-end adjusted offense ({opp_o:.1f}/100).")
+        risks.append(f"{opponent} has a high-end offense (offense rating {opp_o:.1f}).")
 
     pick_sos = _sos_value(row, pick)
     opp_sos = _sos_value(row, opponent)
     if np.isfinite(pick_sos) and np.isfinite(opp_sos):
         signed = pick_sos - opp_sos
         if signed >= 3:
-            positives.append(f"{pick} has faced the materially stronger D-I schedule ({signed:+.1f} SOS gap).")
+            positives.append(f"{pick} has played a meaningfully tougher schedule than {opponent} (schedule-strength edge {signed:.1f}).")
         elif signed <= -3:
-            risks.append(f"{opponent} owns the stronger D-I schedule profile ({abs(signed):.1f} SOS gap).")
+            risks.append(f"{opponent} has played a meaningfully tougher schedule than {pick} (schedule-strength edge {abs(signed):.1f}).")
 
     hmatch = _num(row, "Home Matchup Adj /100")
     amatch = _num(row, "Away Matchup Adj /100")
     if np.isfinite(hmatch) and np.isfinite(amatch):
         signed = (hmatch - amatch) if pick_is_home else (amatch - hmatch)
         if signed >= 0.75:
-            positives.append(f"The published matchup interaction favors {pick} by about {signed:.1f} points per 100.")
+            positives.append(f"The style matchup gives {pick} a small additional edge.")
         elif signed <= -0.75:
-            risks.append(f"The matchup interaction favors {opponent} by about {abs(signed):.1f} points per 100.")
+            risks.append(f"The style matchup gives {opponent} a small additional edge.")
 
     p = _num(row, "Win Probability")
     if np.isfinite(p) and p < 0.58:
-        risks.append("The matchup remains near a coin flip (<58% model win probability).")
+        risks.append(f"This is a close game: the model gives {pick} less than a 58% chance to win.")
     quality = _num(row, "Data Quality")
     if np.isfinite(quality) and quality < 55:
-        risks.append(f"Data Quality is only {quality:.0f}/100.")
+        risks.append(f"The model inputs are incomplete or lower-confidence for this game ({quality:.0f}/100 data confidence).")
     if not _bool(row.get("Availability Verified", False)):
-        risks.append("Player availability is not explicitly verified for both teams.")
+        risks.append("Player availability has not been fully verified, so late lineup news could change the matchup.")
 
     low, high = pick_margin_interval(row)
     if np.isfinite(low) and np.isfinite(high) and low <= 0 <= high:
-        risks.append("The P10–P90 margin band crosses zero, so both teams retain meaningful win paths.")
+        risks.append("This game is volatile: the simulations include realistic outcomes where either team wins.")
 
     if not positives:
-        positives.append("The pick is supported by the combined opponent-adjusted efficiency, matchup, pace and simulation layers rather than one dominant signal.")
+        positives.append("No single factor dominates. The pick comes from the combined team-strength, matchup, game-speed and simulation picture.")
     if not risks:
-        risks.append("No major structural warning is visible in the published pregame data, but single-game variance remains material.")
+        risks.append("No major warning stands out in the available pregame data, but any single college basketball game can still swing sharply.")
     return positives[:5], risks[:5]
-
 
 def _result_banner(row: pd.Series) -> str:
     if not _bool(row.get("_grade_eligible", False)):
@@ -318,53 +343,72 @@ def _result_banner(row: pd.Series) -> str:
     mark = "W" if winner_count >= 1 else "L"
     score_text = f"FINAL {fa:.0f}-{fh:.0f}" if np.isfinite(fa) and np.isfinite(fh) else "FINAL"
 
-    def pill(label: str, result: Any, css_win: str) -> str:
+    def pill(label: str, result: Any, css_win: str, help_text: str) -> str:
+        title = esc(help_text)
         if result is True:
-            return f'<span class="result-pill {css_win}">{esc(label)} <strong>W</strong></span>'
+            return f'<span class="result-pill {css_win}" title="{title}">{esc(label)} <strong>W</strong></span>'
         if result is False:
-            return f'<span class="result-pill loss-pill">{esc(label)} L</span>'
-        return f'<span class="result-pill pending-pill">{esc(label)} —</span>'
+            return f'<span class="result-pill loss-pill" title="{title}">{esc(label)} L</span>'
+        return f'<span class="result-pill pending-pill" title="{title}">{esc(label)} —</span>'
 
     decision, _ = decision_home_spread(row)
     close, _ = closing_home_spread(row)
     pick = str(row.get("Model Pick") or "Model pick")
     pick_decision = selected_team_spread(row, decision)
     pick_close = selected_team_spread(row, close)
-    clv = clv_points(row)
+    close_edge = closing_line_edge_text(row)
     explicit_source = str(row.get("_spread_source") or "")
 
     if np.isfinite(pick_decision):
-        line_text = f"ATS line: {pick} {pick_decision:+.1f}"
+        line_text = f"Saved spread: {pick} {pick_decision:+.1f}"
         if np.isfinite(pick_close):
-            line_text += f" · close {pick_close:+.1f}"
-            if np.isfinite(clv):
-                line_text += f" · CLV {clv:+.1f} pts"
+            line_text += f" · closing line {pick_close:+.1f}"
+            if close_edge:
+                line_text += f" · {close_edge}"
     elif spread is not None and explicit_source:
-        line_text = f"ATS result supplied by grader ({explicit_source})"
+        line_text = f"Spread result supplied by grader ({explicit_source})"
     elif np.isfinite(pick_close):
-        line_text = f"Close {pick_close:+.1f} stored for reference only · ATS requires a decision/taken line"
+        line_text = f"Closing line {pick_close:+.1f} saved for reference · spread result needs a pregame/taken line"
     else:
-        line_text = "ATS not graded — no decision-time/taken spread is stored"
+        line_text = "Spread not graded — no pregame/taken sportsbook line was saved"
 
-    headline = "ML + ATS SWEEP" if state == "sweep" else ("WINNING RESULT" if state == "win" else "FINAL RESULT")
+    headline = "ML + SPREAD SWEEP" if state == "sweep" else ("WINNING RESULT" if state == "win" else "FINAL RESULT")
     return compact_html(f"""
       <div class="result-banner {state}">
         <div class="result-mark">{mark}</div>
         <div class="result-copy"><div class="result-headline">{esc(headline)}</div><div class="result-final">{esc(score_text)}</div></div>
-        <div class="result-outcomes">{pill('ML', ml, 'ml-win')}{pill('ATS', spread, 'spread-win')}</div>
+        <div class="result-outcomes">{pill('ML', ml, 'ml-win', 'Moneyline / straight-up winner: did the model pick the team that won the game?')}{pill('SPREAD', spread, 'spread-win', 'Spread result: did the model pick cover the saved pregame or taken sportsbook spread?')}</div>
         <div class="result-line">{esc(line_text)}</div>
       </div>
     """)
-
 
 def _fmt(value: float, digits: int = 1, suffix: str = "") -> str:
     return fmt_num(value, digits, suffix) if np.isfinite(value) else "—"
 
 
-def _profile_metric(label: str, value: object, note: str = "") -> str:
+def _profile_metric(label: str, value: object, note: str = "", tooltip: str = "") -> str:
     note_html = f'<span class="profile-note">{esc(note)}</span>' if note else ""
-    return f'<div class="profile-metric"><span>{esc(label)}</span><strong>{esc(value)}</strong>{note_html}</div>'
+    help_html = f'<span class="help-dot" title="{esc(tooltip)}" aria-label="{esc(tooltip)}">?</span>' if tooltip else ""
+    title_attr = f' title="{esc(tooltip)}"' if tooltip else ""
+    return f'<div class="profile-metric"{title_attr}><span>{esc(label)}{help_html}</span><strong>{esc(value)}</strong>{note_html}</div>'
 
+
+def metric_glossary_html() -> str:
+    return compact_html("""
+      <details class="metric-glossary">
+        <summary>What do these numbers mean?</summary>
+        <div class="metric-glossary-grid">
+          <div><strong>Offense rating</strong><span>Points scored per 100 possessions after adjusting for opponent strength. Higher is better.</span></div>
+          <div><strong>Defense rating</strong><span>Points allowed per 100 possessions after adjusting for opponent strength. Lower is better.</span></div>
+          <div><strong>Overall rating</strong><span>Offense rating minus defense rating. Higher means a stronger overall efficiency profile.</span></div>
+          <div><strong>Schedule strength</strong><span>How difficult the team's Division I schedule has been. Higher means tougher competition.</span></div>
+          <div><strong>Likely result range</strong><span>The middle 80% of model simulations for the selected team. It shows realistic good and bad outcomes.</span></div>
+          <div><strong>Typical margin swing</strong><span>How uncertain the projected winning margin is. A larger number means a more unpredictable game.</span></div>
+          <div><strong>Data confidence</strong><span>How complete and reliable the inputs are for this matchup. Higher is better.</span></div>
+          <div><strong>Model-implied odds</strong><span>American odds implied by the model's win probability. This is not a sportsbook quote.</span></div>
+        </div>
+      </details>
+    """)
 
 def _team_profile_card(row: pd.Series, team: str, focus_team: str) -> str:
     prefix = _team_prefix(row, team)
@@ -374,14 +418,14 @@ def _team_profile_card(row: pd.Series, team: str, focus_team: str) -> str:
     ppg = _ppg(row, prefix)
     ppga = _ppga(row, prefix)
     metrics = "".join([
-        _profile_metric("AdjO", _fmt(_num(row, f"{prefix} AdjO"))),
-        _profile_metric("AdjD", _fmt(_num(row, f"{prefix} AdjD")), "lower better"),
-        _profile_metric("AdjNet", _fmt(_num(row, f"{prefix} AdjNet"))),
-        _profile_metric("D-I SOS", _fmt(_sos_value(row, team))),
-        _profile_metric("PPG", _fmt(ppg)),
-        _profile_metric("PPG allowed", _fmt(ppga)),
-        _profile_metric("Matchup /100", _fmt(_num(row, f"{prefix} Matchup Adj /100"))),
-        _profile_metric("Availability adj", _fmt(_num(row, f"{prefix} Availability Adj"), 1, " pts")),
+        _profile_metric("Offense rating", _fmt(_num(row, f"{prefix} AdjO")), "higher is better", "Opponent-adjusted points scored per 100 possessions. Higher is better."),
+        _profile_metric("Defense rating", _fmt(_num(row, f"{prefix} AdjD")), "lower is better", "Opponent-adjusted points allowed per 100 possessions. Lower is better."),
+        _profile_metric("Overall rating", _fmt(_num(row, f"{prefix} AdjNet")), "higher is better", "Offense rating minus defense rating. Higher means a stronger overall efficiency profile."),
+        _profile_metric("Schedule strength", _fmt(_sos_value(row, team)), "higher = tougher", "How difficult this team's Division I schedule has been. Higher means tougher competition."),
+        _profile_metric("Points / game", _fmt(ppg), "pregame average", "Average points scored per game before this matchup."),
+        _profile_metric("Points allowed / game", _fmt(ppga), "pregame average", "Average points allowed per game before this matchup."),
+        _profile_metric("Matchup edge", _fmt(_num(row, f"{prefix} Matchup Adj /100")), "positive helps team", "A small model adjustment for how the teams' styles and strengths interact. Positive favors the team shown."),
+        _profile_metric("Player-status impact", _fmt(_num(row, f"{prefix} Availability Adj"), 1, " pts"), "availability effect", "Estimated point impact from known player availability. Treat cautiously when player status is not verified."),
     ])
     classes = "team-profile-card"
     if is_focus:
@@ -395,7 +439,6 @@ def _team_profile_card(row: pd.Series, team: str, focus_team: str) -> str:
       </div>
     """)
 
-
 def team_profile_pair_html(row: pd.Series, focus_team: str | None = None) -> str:
     home = str(row.get("Home Team") or "")
     away = str(row.get("Away Team") or "")
@@ -404,9 +447,8 @@ def team_profile_pair_html(row: pd.Series, focus_team: str | None = None) -> str
     other = away if focus == home else home
     cards = _team_profile_card(row, focus, focus) + _team_profile_card(row, other, focus)
     has_ppg = np.isfinite(_ppg(row, _team_prefix(row, focus))) and np.isfinite(_ppg(row, _team_prefix(row, other)))
-    foot = "" if has_ppg else '<div class="dossier-footnote">PPG / PPG allowed appear only when true pregame descriptive fields are published; the site never derives them from projected scores.</div>'
+    foot = "" if has_ppg else '<div class="dossier-footnote">Points-per-game averages will appear when true pregame values are published. Projected scores are never used as a substitute.</div>'
     return compact_html(f'<div class="team-profile-grid">{cards}</div>{foot}')
-
 
 def team_snapshot_html(row: pd.Series) -> str:
     return team_profile_pair_html(row, str(row.get("Model Pick") or ""))
@@ -424,18 +466,27 @@ def matchup_battle_html(row: pd.Series, focus_team: str | None = None) -> str:
     other_d = _team_value(row, other, "AdjD")
     net_gap = _team_value(row, focus, "AdjNet") - _team_value(row, other, "AdjNet")
     sos_gap = _sos_value(row, focus) - _sos_value(row, other)
+
+    if np.isfinite(net_gap):
+        strength_text = f"{focus} +{net_gap:.1f}" if net_gap >= 0 else f"{other} +{abs(net_gap):.1f}"
+    else:
+        strength_text = "—"
+    if np.isfinite(sos_gap):
+        schedule_text = f"{focus} tougher by {sos_gap:.1f}" if sos_gap >= 0 else f"{other} tougher by {abs(sos_gap):.1f}"
+    else:
+        schedule_text = "—"
+
     return compact_html(f"""
       <div class="battle-shell">
-        <div class="battle-title">MATCHUP BATTLEGROUND</div>
+        <div class="battle-title">HOW THE TEAMS MATCH UP</div>
         <div class="battle-grid">
-          <div class="battle-card"><span>{esc(focus)} offense</span><strong>{_fmt(focus_o)}</strong><em>AdjO vs {esc(other)} AdjD {_fmt(other_d)}</em></div>
-          <div class="battle-card"><span>{esc(other)} offense</span><strong>{_fmt(other_o)}</strong><em>AdjO vs {esc(focus)} AdjD {_fmt(focus_d)}</em></div>
-          <div class="battle-card"><span>AdjNet gap</span><strong>{_fmt(net_gap,1,' pts')}</strong><em>positive favors {esc(focus)}</em></div>
-          <div class="battle-card"><span>SOS gap</span><strong>{_fmt(sos_gap,1)}</strong><em>positive = tougher {esc(focus)} schedule</em></div>
+          <div class="battle-card" title="Offense rating versus the opponent's defense rating. Offense: higher is better. Defense: lower is better."><span>{esc(focus)} offense vs defense</span><strong>{_fmt(focus_o)} vs {_fmt(other_d)}</strong><em>offense rating vs {esc(other)} defense rating</em></div>
+          <div class="battle-card" title="Offense rating versus the opponent's defense rating. Offense: higher is better. Defense: lower is better."><span>{esc(other)} offense vs defense</span><strong>{_fmt(other_o)} vs {_fmt(focus_d)}</strong><em>offense rating vs {esc(focus)} defense rating</em></div>
+          <div class="battle-card" title="Difference in overall opponent-adjusted team efficiency. Higher overall rating is better."><span>Overall team-strength edge</span><strong>{esc(strength_text)}</strong><em>bigger advantage = stronger overall profile</em></div>
+          <div class="battle-card" title="Difference in schedule-strength rating. Higher schedule strength means tougher competition faced."><span>Tougher schedule</span><strong>{esc(schedule_text)}</strong><em>who has faced stronger competition</em></div>
         </div>
       </div>
     """)
-
 
 def evidence_html(row: pd.Series) -> str:
     positives, risks = signal_readout(row)
@@ -459,67 +510,68 @@ def market_context_html(row: pd.Series) -> str:
     selected_decision = selected_team_spread(row, decision)
     selected_close = selected_team_spread(row, close)
     gap = model_market_gap(row)
-    clv = clv_points(row)
+    close_edge = closing_line_edge_text(row)
 
     if not np.isfinite(selected_decision):
-        close_note = f' Closing line {selected_close:+.1f} is stored for reference only.' if np.isfinite(selected_close) else ""
+        close_note = f' A closing line of {selected_close:+.1f} is saved for reference only.' if np.isfinite(selected_close) else ""
         return compact_html(f"""
           <div class="market-context neutral">
-            <div><span>MARKET CONTEXT</span><strong>No decision-time spread stored</strong></div>
-            <p>The model forecast remains market-blind.{esc(close_note)} No ATS recommendation is inferred from the model line alone.</p>
+            <div><span>SPORTSBOOK COMPARISON</span><strong>No pregame sportsbook spread saved</strong></div>
+            <p>The prediction was made without using sportsbook lines.{esc(close_note)} The site will not grade the spread without a saved pregame/taken line.</p>
           </div>
         """)
 
-    gap_text = f"{gap:+.1f} pts vs model fair" if np.isfinite(gap) else "Model gap unavailable"
+    if np.isfinite(gap):
+        if gap > 0:
+            gap_text = f"Sportsbook gives the pick {gap:.1f} more points than the model spread"
+        elif gap < 0:
+            gap_text = f"Sportsbook line is {abs(gap):.1f} points less favorable than the model spread"
+        else:
+            gap_text = "Sportsbook and model spread match"
+    else:
+        gap_text = "Model-versus-sportsbook difference unavailable"
     close_html = ""
     if np.isfinite(selected_close):
-        clv_text = f" · CLV {clv:+.1f} pts" if np.isfinite(clv) else ""
-        close_html = f'<span class="market-close">Close {selected_close:+.1f}{clv_text}</span>'
+        edge = f" · {close_edge}" if close_edge else ""
+        close_html = f'<span class="market-close">Closing line {selected_close:+.1f}{esc(edge)}</span>'
     return compact_html(f"""
       <div class="market-context live">
-        <div><span>MARKET CONTEXT</span><strong>{esc(pick)} {selected_decision:+.1f}</strong></div>
+        <div><span>SPORTSBOOK COMPARISON</span><strong>{esc(pick)} {selected_decision:+.1f}</strong></div>
         <div class="market-gap">{esc(gap_text)}</div>{close_html}
-        <p>Display-only market comparison. It does not feed the production model and is not an automatic bet/EV label. Source: {esc(decision_source or 'published line')}.</p>
+        <p>This comparison is display-only. Sportsbook lines do not change the production prediction and this is not an automatic bet recommendation. Source: {esc(decision_source or 'published line')}.</p>
       </div>
     """)
 
-
 def betting_snapshot_html(row: pd.Series) -> str:
-    low, high = pick_margin_interval(row)
-    interval = f"{low:+.1f} to {high:+.1f}" if np.isfinite(low) and np.isfinite(high) else "—"
     metrics = "".join([
-        _profile_metric("Model line", fmt_spread(row.get("Fair Spread"))),
-        _profile_metric("Model fair ML", fmt_odds(row.get("Fair Moneyline"))),
-        _profile_metric("Projected total", fmt_num(row.get("Projected Total"), 1)),
-        _profile_metric("Expected pace", fmt_num(row.get("Expected Pace"), 1)),
-        _profile_metric("Pick margin P10–P90", interval),
-        _profile_metric("Data quality", f"{fmt_num(row.get('Data Quality'),0)}/100"),
+        _profile_metric("Model spread", fmt_spread(row.get("Fair Spread")), "projected point spread", "The point spread implied by the model's projected score. Negative means the picked team is favored."),
+        _profile_metric("Model-implied odds", fmt_odds(row.get("Fair Moneyline")), "not a sportsbook quote", "American odds implied by the model's win probability. This is not a sportsbook price."),
+        _profile_metric("Projected combined points", fmt_num(row.get("Projected Total"), 1), "both teams combined", "The model's expected total points scored by both teams."),
+        _profile_metric("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "estimated possessions", "Estimated number of possessions in the game. More possessions usually means a faster game."),
+        _profile_metric("Likely result range", likely_result_text(row), "middle 80% of simulations", "A realistic range for how far the selected team could win or lose by in the middle 80% of model simulations."),
+        _profile_metric("Data confidence", f"{fmt_num(row.get('Data Quality'),0)}/100", "higher is better", "How complete and reliable the model inputs are for this matchup. Higher is better."),
     ])
     return compact_html(f'<div class="betting-snapshot">{metrics}</div>')
 
-
 def dossier_html(row: pd.Series) -> str:
-    low, high = pick_margin_interval(row)
-    interval = f"{low:+.1f} / {high:+.1f}" if np.isfinite(low) and np.isfinite(high) else "—"
-    availability = "Verified" if _bool(row.get("Availability Verified", False)) else "Unverified"
-    site = "Neutral court" if _bool(row.get("Neutral Site", False)) else "Campus/site game"
+    availability = "Verified" if _bool(row.get("Availability Verified", False)) else "Not verified"
+    site = "Neutral court" if _bool(row.get("Neutral Site", False)) else "Campus / scheduled site"
     context = compact_html(f"""
       <div class="dossier-context-grid">
-        <div class="dossier-context"><span>Projection tier</span><strong>{esc(projection_tier(row))}</strong></div>
-        <div class="dossier-context"><span>Pick margin P10/P90</span><strong>{esc(interval)}</strong></div>
-        <div class="dossier-context"><span>Margin SD</span><strong>{fmt_num(row.get('Margin SD'),1)}</strong></div>
-        <div class="dossier-context"><span>Availability</span><strong>{esc(availability)}</strong></div>
-        <div class="dossier-context"><span>Game site</span><strong>{esc(site)}</strong></div>
-        <div class="dossier-context"><span>Data quality</span><strong>{fmt_num(row.get('Data Quality'),0)}/100</strong></div>
+        <div class="dossier-context" title="A plain-language summary of how strongly the model favors the selected team."><span>Pick strength</span><strong>{esc(projection_tier(row))}</strong></div>
+        <div class="dossier-context" title="The middle 80% of simulations for the selected team. It includes realistic good and bad outcomes."><span>Likely result range</span><strong>{esc(likely_result_text(row))}</strong></div>
+        <div class="dossier-context" title="How uncertain the projected winning margin is. Bigger numbers mean a more unpredictable game."><span>Typical margin swing</span><strong>{esc(margin_swing_text(row))}</strong></div>
+        <div class="dossier-context" title="Whether the model has verified player availability information for this matchup."><span>Player status</span><strong>{esc(availability)}</strong></div>
+        <div class="dossier-context"><span>Location</span><strong>{esc(site)}</strong></div>
+        <div class="dossier-context" title="How complete and reliable the model inputs are. Higher is better."><span>Data confidence</span><strong>{fmt_num(row.get('Data Quality'),0)}/100</strong></div>
       </div>
     """)
     return compact_html(f"""
       <details class="intel-dossier">
-        <summary><span>Game Intelligence Dossier</span><span>Thesis / risk / team profiles / market context ＋</span></summary>
-        <div class="dossier-body">{evidence_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_context_html(row)}{context}</div>
+        <summary><span>Why this pick?</span><span>Reasons / risks / team comparison / sportsbook context ＋</span></summary>
+        <div class="dossier-body">{evidence_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
       </details>
     """)
-
 
 def game_card_html(row: pd.Series) -> str:
     home = str(row.get("Home Team") or "Home")
@@ -540,22 +592,22 @@ def game_card_html(row: pd.Series) -> str:
         start_text = "Start time unavailable"
 
     chips = [
-        f'<span class="chip {"teal" if d1 else "gold"}">{"D-I vs D-I" if d1 else esc(row.get("Game Classification", "Non-primary"))}</span>',
+        f'<span class="chip {"teal" if d1 else "gold"}">{"Both teams Division I" if d1 else "Other matchup"}</span>',
         f'<span class="chip projection">{esc(projection_tier(row))}</span>',
     ]
     if neutral:
         chips.append('<span class="chip orange">Neutral court</span>')
-    chips.append(f'<span class="chip {"green" if verified else "gold"}">{"Availability verified" if verified else "Availability unverified"}</span>')
+    chips.append(f'<span class="chip {"green" if verified else "gold"}">{"Player status verified" if verified else "Player status not verified"}</span>')
     chips.append(f'<span class="chip champion">{esc(model_role(row))}</span>')
     band = outcome_band_label(row)
-    chips.append(f'<span class="chip {"green" if band.startswith("Pick-positive") else "gold"}">{esc(band)}</span>')
+    chips.append(f'<span class="chip {"green" if band.startswith("Likely range favors pick") else "gold"}">{esc(band)}</span>')
 
     decision, _ = decision_home_spread(row)
     selected_decision = selected_team_spread(row, decision)
     gap = model_market_gap(row)
     if np.isfinite(selected_decision):
-        gap_text = f" · gap {gap:+.1f}" if np.isfinite(gap) else ""
-        chips.append(f'<span class="chip market">Market {selected_decision:+.1f}{esc(gap_text)}</span>')
+        gap_text = f" · differs {abs(gap):.1f} pts" if np.isfinite(gap) and abs(gap) >= .05 else ""
+        chips.append(f'<span class="chip market">Sportsbook {selected_decision:+.1f}{esc(gap_text)}</span>')
 
     def team_row(name: str, score: Any) -> str:
         tag = '<span class="team-tag">MODEL PICK</span>' if name == pick else ""
@@ -567,8 +619,8 @@ def game_card_html(row: pd.Series) -> str:
       <div class="game-card {cls}">
         {result}
         <div class="game-head">
-          <div><span class="rank-pill">#{rank}</span><div class="game-time">{esc(start_text)} · {"Neutral" if neutral else "Campus/site game"}</div></div>
-          <div><div class="prob">{fmt_pct(prob)}</div><div class="prob-label">Model win probability</div><div class="model-pick">{esc(pick)} {fmt_spread(row.get('Fair Spread'))}</div></div>
+          <div><span class="rank-pill">#{rank}</span><div class="game-time">{esc(start_text)} · {"Neutral court" if neutral else "Campus / scheduled site"}</div></div>
+          <div><div class="prob">{fmt_pct(prob)}</div><div class="prob-label">Chance model pick wins</div><div class="model-pick">{esc(pick)} {fmt_spread(row.get('Fair Spread'))}</div></div>
         </div>
         <div class="scoreboard">{team_row(away, row.get('Projected Away Score'))}{team_row(home, row.get('Projected Home Score'))}</div>
         <div class="chip-row">{''.join(chips)}</div>
@@ -576,7 +628,6 @@ def game_card_html(row: pd.Series) -> str:
         {dossier_html(row)}
       </div>
     """)
-
 
 def game_card_grid_html(frame: pd.DataFrame) -> str:
     cards = "".join(game_card_html(row) for _, row in frame.iterrows())
