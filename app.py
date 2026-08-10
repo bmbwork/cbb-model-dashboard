@@ -17,12 +17,13 @@ from cbb_dashboard.charts import (
 )
 from cbb_dashboard.data import (
     DataValidationError,
+    attach_grading,
     board_table,
     normalize_board,
     normalize_graded_board,
     read_csv,
 )
-from cbb_dashboard.intelligence import evidence_html, game_card_grid_html, game_card_html, translation_direction
+from cbb_dashboard.intelligence import calibration_direction, compact_html, evidence_html, game_card_grid_html, game_card_html, team_snapshot_html
 from cbb_dashboard.performance import (
     aggregate_metrics,
     confidence_buckets,
@@ -40,10 +41,10 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 
 st.set_page_config(
-    page_title="CBB Model | Intelligence Terminal",
+    page_title="CBB Model | Champion Terminal",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -97,35 +98,42 @@ def make_store() -> tuple[SupabaseSlateStore | None, str | None]:
 
 def metric_card(label: str, value: str, foot: str = "") -> None:
     st.markdown(
-        f"""
+        compact_html(f"""
         <div class="metric-shell">
           <div class="metric-label">{esc(label)}</div>
           <div class="metric-value">{esc(value)}</div>
           <div class="metric-foot">{esc(foot)}</div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
 
 def status_strip(report, board: pd.DataFrame) -> None:
     d1_pct = (report.d1_games / report.rows) if report.rows else 0.0
-    translation_games = int((board["_translation"].abs() >= 0.05).sum())
-    training = pd.to_numeric(board.get("Schedule Translation Training Games"), errors="coerce")
-    train_text = f"{int(training.max()):,} prior games" if training.notna().any() else "not reported"
+    adjusted = int((pd.to_numeric(board.get("_display_adj"), errors="coerce").abs() >= 0.05).sum())
+    training_games = pd.to_numeric(board.get("Champion Training Games"), errors="coerce")
+    training_dates = pd.to_numeric(board.get("Champion Training Dates"), errors="coerce")
+    if training_games.notna().any():
+        train_text = f"{int(training_games.max()):,} games"
+        if training_dates.notna().any():
+            train_text += f" / {int(training_dates.max())} dates"
+    else:
+        training = pd.to_numeric(board.get("Schedule Translation Training Games"), errors="coerce")
+        train_text = f"archive: {int(training.max()):,} prior games" if training.notna().any() else "not reported"
     verified = float(board["_availability_verified"].mean()) if len(board) else 0.0
     quality = pd.to_numeric(board.get("Data Quality"), errors="coerce").mean()
+    role = "Production champion" if str(report.model_version).upper() == "1.1.3B" else "Historical / challenger board"
     html = f"""
     <div class="status-strip">
-      <div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Engine</div><div class="status-value">V{esc(report.model_version)}</div><div class="status-detail">Schedule-translation challenger</div></div>
+      <div class="status-item"><div class="status-top"><span class="status-dot fresh"></span>Engine</div><div class="status-value">V{esc(report.model_version)}</div><div class="status-detail">{esc(role)}</div></div>
       <div class="status-item"><div class="status-top"><span class="status-dot info"></span>D-I cohort</div><div class="status-value">{report.d1_games}/{report.rows} games</div><div class="status-detail">{d1_pct:.0%} primary evaluation coverage</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot info"></span>Schedule layer</div><div class="status-value">{translation_games} adjusted</div><div class="status-detail">{esc(train_text)} in largest fitted window</div></div>
-      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if verified >= .99 else 'warn'}"></span>Availability</div><div class="status-value">{verified:.0%} verified</div><div class="status-detail">Display flag; model uses only supplied availability</div></div>
+      <div class="status-item"><div class="status-top"><span class="status-dot info"></span>Margin calibration</div><div class="status-value">{adjusted} adjusted</div><div class="status-detail">{esc(train_text)} in the published history window</div></div>
+      <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if verified >= .99 else 'warn'}"></span>Availability</div><div class="status-value">{verified:.0%} verified</div><div class="status-detail">Availability remains a separate pregame information layer</div></div>
       <div class="status-item"><div class="status-top"><span class="status-dot {'fresh' if pd.notna(quality) and quality >= 65 else 'warn'}"></span>Data quality</div><div class="status-value">{fmt_num(quality,0)}/100</div><div class="status-detail">Mean slate quality score</div></div>
     </div>
     """
-    st.markdown(html, unsafe_allow_html=True)
-
+    st.markdown(compact_html(html), unsafe_allow_html=True)
 
 def published_time(record: dict[str, Any] | None) -> str:
     raw = (record or {}).get("published_at")
@@ -141,41 +149,39 @@ def render_header(report, record: dict[str, Any] | None) -> None:
     rev = (record or {}).get("revision") or 1
     stamp = published_time(record)
     publication = f"Published revision {rev}" + (f" • {stamp}" if stamp else "")
+    role = "Production Champion" if str(report.model_version).upper() == "1.1.3B" else "Historical / Challenger"
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="cbb-title">{BRAND} <span style="color:#f97316">//</span> INTELLIGENCE TERMINAL</div>',
+        f'<div class="cbb-title">{BRAND} <span style="color:#fbbf24">//</span> CHAMPION TERMINAL</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<div class="cbb-subtitle">{esc(report.slate_date)} &nbsp;•&nbsp; Challenger {esc(report.model_version)} &nbsp;•&nbsp; {esc(publication)}</div>',
+        f'<div class="cbb-subtitle">{esc(report.slate_date)} &nbsp;•&nbsp; {esc(role)} V{esc(report.model_version)} &nbsp;•&nbsp; {esc(publication)}</div>',
         unsafe_allow_html=True,
     )
-
 
 def render_empty_state(store_error: str | None) -> None:
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#f97316">//</span> INTELLIGENCE TERMINAL</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> CHAMPION TERMINAL</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-subtitle">Public read-only analytics interface • No slate is currently published.</div>', unsafe_allow_html=True)
     if store_error:
         st.info("Publishing storage has not been configured for this deployment yet. Public upload controls remain disabled.")
     else:
-        st.info("No published CBB V1.1 decision board is available yet. Sign in as the authorized owner to publish the first slate.")
+        st.info("No compatible CBB decision board is available yet. Sign in as the authorized owner to publish the first slate.")
     st.markdown(
         '<div class="firewall-note"><strong>Model firewall:</strong> the website reads published model output. It does not rerun, rescore, or modify the independent CBB prediction engine.</div>',
         unsafe_allow_html=True,
     )
-
 
 def format_board_for_table(board: pd.DataFrame) -> pd.DataFrame:
     out = board_table(board)
     for c in ["Win Probability", "V1.0.1 Baseline Win Probability"]:
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
-    for c in ["Fair Spread", "V1.0.1 Baseline Fair Spread", "Schedule Translation Margin Adj"]:
+    for c in ["Fair Spread", "V1.0.1 Baseline Fair Spread", "Champion Margin Calibration Adj", "V1.1.3B Margin Adjustment"]:
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").map(lambda x: f"{x:+.1f}" if pd.notna(x) else "—")
     return out
-
 
 def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
     st.markdown('<div class="section-title">Board filters</div>', unsafe_allow_html=True)
@@ -188,7 +194,7 @@ def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
     with c3:
         confidence_floor = st.slider("Minimum win probability", 50, 95, 50, 1)
     with c4:
-        only_changed = st.toggle("V1.1 pick changes only", value=False)
+        verified_only = st.toggle("Availability verified only", value=False)
     filtered = board.copy()
     if selected_teams:
         filtered = filtered[filtered["Home Team"].isin(selected_teams) | filtered["Away Team"].isin(selected_teams)]
@@ -197,27 +203,37 @@ def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
     elif cohort == "Non-primary only":
         filtered = filtered[~filtered["_is_d1"]]
     filtered = filtered[filtered["_win_prob"] >= confidence_floor / 100.0]
-    if only_changed:
-        filtered = filtered[filtered["_pick_changed"]]
+    if verified_only:
+        filtered = filtered[filtered["_availability_verified"]]
     return filtered
-
 
 def render_board(board: pd.DataFrame, report) -> None:
     status_strip(report, board)
     d1 = board[board["_is_d1"]].copy()
     strongest = board.sort_values("_win_prob", ascending=False).iloc[0] if len(board) else None
-    cols = st.columns(5)
+    graded = board[board.get("_grade_eligible", pd.Series(False, index=board.index)).fillna(False).astype(bool)].copy()
+    ml_wins = int(graded.get("_ml_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
+    spread_known = graded.get("_spread_correct", pd.Series(dtype="boolean")).notna().sum() if len(graded) else 0
+    spread_wins = int(graded.get("_spread_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
+    avg_adj = pd.to_numeric(board.get("_display_adj"), errors="coerce").abs().mean()
+
+    cols = st.columns(6)
     with cols[0]: metric_card("Games", f"{len(board)}", f"{report.d1_games} D-I vs D-I")
     with cols[1]: metric_card("Strongest pick", str(strongest.get("Model Pick")) if strongest is not None else "—", fmt_pct(strongest.get("Win Probability")) if strongest is not None else "")
-    with cols[2]: metric_card("Neutral court", f"{int(board['_neutral'].sum())}", "Tournament / neutral-site flag")
-    with cols[3]: metric_card("Pick changes", f"{int(board['_pick_changed'].sum())}", "Versus frozen V1.0.1")
-    with cols[4]: metric_card("Avg translation", f"{board['_translation'].abs().mean():.1f} pts", "Absolute schedule adjustment")
+    with cols[2]: metric_card("Avg B calibration", f"{avg_adj:.1f} pts" if pd.notna(avg_adj) else "—", "Absolute margin adjustment")
+    with cols[3]: metric_card("Neutral court", f"{int(board['_neutral'].sum())}", "Tournament / neutral-site flag")
+    with cols[4]: metric_card("ML grade", f"{ml_wins}-{len(graded)-ml_wins}" if len(graded) else "Pregame", "Official finals")
+    with cols[5]: metric_card("Spread grade", f"{spread_wins}-{int(spread_known)-spread_wins}" if spread_known else "—", "Requires stored market line")
+
+    if len(graded):
+        spread_note = f'<span class="grade-summary-pill gold">SPREAD {spread_wins}-{int(spread_known)-spread_wins}</span>' if spread_known else '<span class="grade-summary-pill muted">SPREAD — market line not published</span>'
+        st.markdown(f'<div class="grade-summary-strip"><span class="grade-summary-pill green">ML {ml_wins}-{len(graded)-ml_wins}</span>{spread_note}<span class="grade-summary-pill muted">{len(graded)} final games attached</span></div>', unsafe_allow_html=True)
 
     for warning in report.warnings:
         st.warning(warning, icon="⚠️")
 
     st.markdown('<div class="section-title">Priority board</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-note">Ranked game cards preserve the HR site’s quick-scan format, redesigned around score, spread, pace and team-strength context.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">Quick-scan production cards show the pick first; open each Game Intelligence Dossier for matchup drivers, team profile and risk factors.</div>', unsafe_allow_html=True)
     scope = st.segmented_control("Card depth", ["Top 10", "Top 25", "Top 50", "All"], default="Top 10", label_visibility="collapsed")
     n = {"Top 10": 10, "Top 25": 25, "Top 50": 50, "All": len(board)}.get(scope, 10)
     st.markdown(game_card_grid_html(board.head(n)), unsafe_allow_html=True)
@@ -230,21 +246,19 @@ def render_board(board: pd.DataFrame, report) -> None:
         st.markdown('<div class="section-title">Confidence separation</div>', unsafe_allow_html=True)
         st.plotly_chart(confidence_chart(d1, top_n=min(25, len(d1))), use_container_width=True)
 
-
 def matchup_label(row: pd.Series) -> str:
     marker = " · N" if bool(row.get("Neutral Site", False)) else ""
     return f"#{int(row.get('_rank', 0))} {row.get('Away Team')} vs {row.get('Home Team')}{marker}"
 
 
 def comparison_html(row: pd.Series) -> str:
-    return f"""
+    return compact_html(f"""
     <div class="compare-shell">
-      <div class="compare-side"><div class="compare-title">Frozen V1.0.1 baseline</div><div class="compare-main">{esc(row.get('V1.0.1 Baseline Pick','—'))} {fmt_spread(row.get('V1.0.1 Baseline Fair Spread'))}</div><div class="compare-sub">{fmt_pct(row.get('V1.0.1 Baseline Win Probability'))} win probability</div></div>
+      <div class="compare-side"><div class="compare-title">Frozen V1.0.1 anchor</div><div class="compare-main">{esc(row.get('V1.0.1 Baseline Pick','—'))} {fmt_spread(row.get('V1.0.1 Baseline Fair Spread'))}</div><div class="compare-sub">{fmt_pct(row.get('V1.0.1 Baseline Win Probability'))} win probability</div></div>
       <div class="compare-arrow">→</div>
-      <div class="compare-side primary"><div class="compare-title">V1.1 challenger</div><div class="compare-main">{esc(row.get('Model Pick','—'))} {fmt_spread(row.get('Fair Spread'))}</div><div class="compare-sub">{fmt_pct(row.get('Win Probability'))} • {esc(translation_direction(row))}</div></div>
+      <div class="compare-side primary"><div class="compare-title">Published model V{esc(row.get('Model Version','—'))}</div><div class="compare-main">{esc(row.get('Model Pick','—'))} {fmt_spread(row.get('Fair Spread'))}</div><div class="compare-sub">{fmt_pct(row.get('Win Probability'))} • {esc(calibration_direction(row))}</div></div>
     </div>
-    """
-
+    """)
 
 def render_matchup_explorer(board: pd.DataFrame) -> None:
     st.markdown('<div class="cbb-kicker">GAME-LEVEL EXPLAINABILITY</div>', unsafe_allow_html=True)
@@ -254,7 +268,6 @@ def render_matchup_explorer(board: pd.DataFrame) -> None:
     row = board.loc[labels[choice]]
     st.markdown(game_card_html(row), unsafe_allow_html=True)
     st.markdown(comparison_html(row), unsafe_allow_html=True)
-    st.markdown(evidence_html(row), unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
@@ -271,19 +284,18 @@ def render_matchup_explorer(board: pd.DataFrame) -> None:
     with sim[4]: metric_card("Projected total", fmt_num(row.get("Projected Total"), 1), "Market-blind total")
 
     st.markdown(
-        f'<div class="intel-callout"><strong>Schedule translation:</strong> {esc(str(row.get("Schedule Translation Status") or "Not reported"))}. '
-        f'Home D-I SOS {fmt_num(row.get("V1.1 Home D1 SOS"),1)} vs away {fmt_num(row.get("V1.1 Away D1 SOS"),1)}; '
-        f'net V1.1 margin adjustment {fmt_num(row.get("Schedule Translation Margin Adj"),1," pts")}.</div>',
+        f'<div class="intel-callout"><strong>Champion calibration:</strong> {esc(str(row.get("Champion Calibration Status") or "Published model context"))}. '
+        f'Home D-I SOS {fmt_num(row.get("V1.1 Home D1 SOS", row.get("Home SOS")),1)} vs away {fmt_num(row.get("V1.1 Away D1 SOS", row.get("Away SOS")),1)}; '
+        f'{esc(calibration_direction(row))}. Probability remains the published model probability and is not recomputed from a sportsbook line.</div>',
         unsafe_allow_html=True,
     )
-
 
 def team_rows(board: pd.DataFrame, team: str) -> pd.DataFrame:
     return board[(board["Home Team"].astype(str) == team) | (board["Away Team"].astype(str) == team)].copy()
 
 
 def render_team_intelligence(board: pd.DataFrame) -> None:
-    st.markdown('<div class="cbb-kicker">TEAM PROFILE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-kicker">TEAM DOSSIER</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Team Intelligence</div>', unsafe_allow_html=True)
     teams = sorted(set(board["Home Team"].astype(str)).union(set(board["Away Team"].astype(str))))
     team = st.selectbox("Select team", teams)
@@ -292,42 +304,58 @@ def render_team_intelligence(board: pd.DataFrame) -> None:
     home = str(row.get("Home Team")) == team
     prefix = "Home" if home else "Away"
     opponent = row.get("Away Team" if home else "Home Team")
+    opp_prefix = "Away" if home else "Home"
     st.markdown(f'<div class="intel-callout"><strong>{esc(team)}</strong> vs {esc(opponent)} • {"neutral court" if bool(row.get("Neutral Site",False)) else "scheduled site"} • model pick: {esc(row.get("Model Pick"))}</div>', unsafe_allow_html=True)
-    cols = st.columns(6)
+
+    cols = st.columns(8)
+    ppg = row.get(f"{prefix} PPG", row.get(f"{prefix} Points Per Game"))
+    ppga = row.get(f"{prefix} PPG Allowed", row.get(f"{prefix} Points Allowed Per Game"))
     metrics = [
-        ("AdjO", row.get(f"{prefix} AdjO"), "points / 100"),
-        ("AdjD", row.get(f"{prefix} AdjD"), "points allowed / 100"),
+        ("AdjO", row.get(f"{prefix} AdjO"), "offense /100"),
+        ("AdjD", row.get(f"{prefix} AdjD"), "lower better"),
         ("AdjNet", row.get(f"{prefix} AdjNet"), "efficiency margin"),
-        ("D-I SOS", row.get(f"V1.1 {prefix} D1 SOS", row.get(f"{prefix} SOS")), "national schedule"),
-        ("Matchup adj", row.get(f"{prefix} Matchup Adj /100"), "four-factor fit"),
-        ("Availability adj", row.get(f"{prefix} Availability Adj"), "points"),
+        ("D-I SOS", row.get(f"V1.1 {prefix} D1 SOS", row.get(f"{prefix} SOS")), "schedule strength"),
+        ("PPG", ppg, "pregame descriptive"),
+        ("PPG allowed", ppga, "pregame descriptive"),
+        ("Opp AdjO", row.get(f"{opp_prefix} AdjO"), str(opponent)),
+        ("Opp AdjD", row.get(f"{opp_prefix} AdjD"), str(opponent)),
     ]
     for col, (label, value, foot) in zip(cols, metrics):
         with col: metric_card(label, fmt_num(value, 1), foot)
+    if pd.isna(pd.to_numeric(ppg, errors="coerce")) or pd.isna(pd.to_numeric(ppga, errors="coerce")):
+        st.caption("PPG and PPG allowed are intentionally shown as — unless the production board exports true pregame descriptive values. The site does not manufacture them from projected scores.")
+
+    st.markdown(evidence_html(row), unsafe_allow_html=True)
+    st.markdown(team_snapshot_html(row), unsafe_allow_html=True)
     st.plotly_chart(team_comparison_chart(row), use_container_width=True)
     st.markdown('<div class="section-title">Game context</div>', unsafe_allow_html=True)
     st.dataframe(format_board_for_table(rows), use_container_width=True, hide_index=True)
 
-
 def render_performance_lab(records: list[dict[str, Any]]) -> None:
     st.markdown('<div class="cbb-kicker">WALK-FORWARD EVIDENCE</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Performance Laboratory</div>', unsafe_allow_html=True)
-    st.markdown('<div class="firewall-note"><strong>Observational only:</strong> grading and challenger-vs-baseline analysis never feed back into a published prediction. V1.1 remains market-blind.</div>', unsafe_allow_html=True)
-    agg = aggregate_metrics(records)
+    st.markdown('<div class="firewall-note"><strong>Observational only:</strong> published grading never feeds back into a prediction. Production B remains market-blind; archived challenger results stay separated from the champion evidence base.</div>', unsafe_allow_html=True)
+    graded_records = [r for r in records if r.get("grading_json")]
+    versions = sorted({str(r.get("model_version") or "") for r in graded_records if r.get("model_version")}, reverse=True)
+    default_scope = "V1.1.3B production champion" if "1.1.3B" in versions else "All published 1.1.x history"
+    choices = ["V1.1.3B production champion", "All published 1.1.x history"] if "1.1.3B" in versions else ["All published 1.1.x history"]
+    scope = st.selectbox("Evidence scope", choices, index=choices.index(default_scope))
+    scoped = [r for r in records if str(r.get("model_version") or "").upper() == "1.1.3B"] if scope.startswith("V1.1.3B") else records
+    agg = aggregate_metrics(scoped)
     if not agg.get("games"):
-        st.info("No V1.1 graded slates have been published yet. Upload a challenger graded board in Admin Studio after the games are final.")
+        st.info("No graded games are available in this evidence scope yet.")
         return
     cols = st.columns(6)
     with cols[0]: metric_card("D-I games", f"{int(agg.get('games',0)):,}", "Primary cohort")
-    with cols[1]: metric_card("Winner accuracy", fmt_pct(agg.get("winner_accuracy")), "V1.1")
+    with cols[1]: metric_card("Winner accuracy", fmt_pct(agg.get("winner_accuracy")), scope)
     with cols[2]: metric_card("Brier", fmt_num(agg.get("brier"), 3), "Lower is better")
     with cols[3]: metric_card("Margin MAE", fmt_num(agg.get("margin_mae"), 2), "Points")
     with cols[4]: metric_card("Baseline MAE", fmt_num(agg.get("baseline_margin_mae"), 2), "V1.0.1")
-    with cols[5]: metric_card("MAE improvement", fmt_num(agg.get("margin_mae_improvement"), 2), "Positive favors V1.1")
+    with cols[5]: metric_card("MAE improvement", fmt_num(agg.get("margin_mae_improvement"), 2), "Positive favors published model")
 
-    hist = history_frame(records)
-    buckets = confidence_buckets(records)
-    topk = top_k_summary(records)
+    hist = history_frame(scoped)
+    buckets = confidence_buckets(scoped)
+    topk = top_k_summary(scoped)
     if not hist.empty:
         st.plotly_chart(performance_trend(hist), use_container_width=True)
     c1, c2 = st.columns([1.35, 1])
@@ -349,32 +377,30 @@ def render_performance_lab(records: list[dict[str, Any]]) -> None:
                 display_hist[c] = display_hist[c].map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
         st.dataframe(display_hist.sort_values("Slate Date", ascending=False), use_container_width=True, hide_index=True)
 
-
 def render_model_guide() -> None:
     st.markdown('<div class="cbb-kicker">MODEL DOCUMENTATION</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">V1.1 Intelligence Guide</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Champion Terminal Guide</div>', unsafe_allow_html=True)
     st.markdown(
         """
-**Prediction hierarchy.** V1.1 starts from the independent opponent-adjusted team-strength engine, pace and Four Factors, then applies the challenger’s leakage-safe D-I schedule-translation layer to the projected margin. The score distribution remains the source of the win probability, fair moneyline and fair spread.
+**Production model.** V1.1.3B starts from the frozen V1.0.1 independent team-strength forecast and applies the validated leakage-safe nonlinear margin calibration learned only from prior graded D-I games. The probability layer remains frozen V1.0.1.
 
-**Frozen baseline.** Every challenger board carries the same-run V1.0.1 prediction beside V1.1. The terminal exposes changes rather than hiding them, so the historical test remains auditable.
+**What changed from the old site.** The old standalone SOS-translation layer is no longer presented as the production mechanism. V1.0.1 remains available as an audit anchor, not as a competing headline forecast.
 
-**Primary cohort.** D-I vs D-I games are the primary performance population. Non-D-I games can remain visible but do not drive the main evaluation metrics.
+**Primary cohort.** D-I vs D-I games remain the primary performance population. Non-D-I games can stay visible but do not drive the main model evaluation.
 
-**Confidence Score.** The 50–100 confidence field is an ordinal decision-support score, not a probability. Use `Win Probability` for probabilistic interpretation.
+**Game Intelligence Dossier.** Each card separates supporting evidence from risk. AdjO/AdjD/AdjNet, D-I SOS, matchup adjustment, pace, uncertainty and availability are descriptive/explanatory views of published pregame information.
 
-**Availability.** Player availability is shown explicitly. Historical slates with unverified availability should be interpreted as primarily testing the team-strength engine.
+**Grading.** ML results come directly from official final scores. A spread/ATS W is displayed only when the graded record includes an explicit spread result or a real stored sportsbook home spread. The model's own fair spread is never used as if it were the sportsbook line.
 
-**Market firewall.** This release contains no sportsbook odds, betting splits, line movement, edge ranking or +EV logic. Those belong to the later Market Terminal after independent challenger validation.
+**Market firewall.** Sportsbook prices, ticket splits, line movement and CLV remain downstream decision-support data. They do not feed V1.1.3B predictions.
         """
     )
     st.markdown('<div class="section-title">Reading a game card</div>', unsafe_allow_html=True)
     st.markdown(
         """
-The card headline answers **who**, **by how much**, and **with what probability**. The scoreboard gives the model’s expected score. `Fair Spread` is expressed from the model pick’s perspective. `Projected Total` and pace describe the expected game environment. The frozen-baseline strip shows whether schedule translation merely widened/narrowed the margin or actually changed the side.
+The headline answers **who**, **by how much**, and **with what probability**. The projected scoreboard and total are model outputs. `Fair Spread` is the model's estimated fair line from the selected side's perspective—not a recorded bet line. Open the dossier for the team matchup table and reasons for/against the pick. After grading, green **ML W** and gold **SPREAD W** result pills appear when those outcomes are legitimately gradeable.
         """
     )
-
 
 def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[dict[str, Any]]) -> None:
     st.markdown('<div class="cbb-kicker">OWNER WORKFLOW</div>', unsafe_allow_html=True)
@@ -391,8 +417,8 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
     actor = audit_actor(access.email)
 
     with board_tab:
-        st.markdown("#### Publish a V1.1 challenger decision board")
-        board_upload = st.file_uploader("V1.1 decision-board CSV", type=["csv"], key="admin_board_upload")
+        st.markdown("#### Publish a CBB production / compatible historical decision board")
+        board_upload = st.file_uploader("CBB decision-board CSV", type=["csv"], key="admin_board_upload")
         if board_upload is not None:
             try:
                 candidate, report = normalize_board(read_csv(board_upload))
@@ -412,7 +438,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
 
     with grade_tab:
         st.markdown("#### Publish completed-slate grading")
-        grade_upload = st.file_uploader("V1.1 graded-board CSV", type=["csv"], key="admin_grade_upload")
+        grade_upload = st.file_uploader("CBB graded-board CSV", type=["csv"], key="admin_grade_upload")
         if grade_upload is not None:
             try:
                 graded, report = normalize_graded_board(read_csv(grade_upload))
@@ -499,7 +525,7 @@ with st.sidebar:
 
     if store_error:
         st.caption("Publishing storage unavailable")
-    st.markdown(f'<div class="small-muted" style="margin-top:1rem">Intelligence Terminal v{APP_VERSION}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-muted" style="margin-top:1rem">Champion Terminal v{APP_VERSION}</div>', unsafe_allow_html=True)
 
 record: dict[str, Any] | None = None
 if selected_date and records:
@@ -510,6 +536,9 @@ report = None
 if record:
     try:
         board, report = normalize_board(SupabaseSlateStore.board_frame(record))
+        grading = SupabaseSlateStore.grading_frame(record)
+        if grading is not None and not grading.empty:
+            board = attach_grading(board, grading)
     except Exception as exc:
         st.error(f"The published board could not be validated: {exc}")
 
@@ -533,6 +562,6 @@ else:
         render_model_guide()
 
 st.markdown(
-    f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Dashboard v{APP_VERSION} • Public interface read-only • Independent model remains market-blind</div>',
+    f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Champion Terminal v{APP_VERSION} • Public interface read-only • Independent model remains market-blind</div>',
     unsafe_allow_html=True,
 )

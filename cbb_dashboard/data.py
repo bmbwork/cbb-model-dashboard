@@ -22,6 +22,13 @@ GRADE_REQUIRED_COLUMNS = [
     "Brier Component", "Log Loss Component",
 ]
 
+MARKET_HOME_SPREAD_COLUMNS = (
+    "Closing Home Spread", "Market Home Spread", "Sportsbook Home Spread", "Bet Home Spread",
+)
+EXPLICIT_SPREAD_RESULT_COLUMNS = (
+    "Model Spread Correct", "Spread Correct", "ATS Correct", "Model ATS Correct",
+)
+
 
 @dataclass(frozen=True)
 class BoardReport:
@@ -48,6 +55,21 @@ def _single_text(frame: pd.DataFrame, column: str) -> str:
     return vals[0]
 
 
+def _bool_scalar(value: Any) -> bool | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, float, np.number)) and float(value) in (0.0, 1.0):
+        return bool(int(value))
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y", "w", "win", "won"}:
+        return True
+    if text in {"false", "0", "no", "n", "l", "loss", "lost"}:
+        return False
+    return None
+
+
 def _bool_series(series: pd.Series) -> pd.Series:
     if series.dtype == bool:
         return series.fillna(False)
@@ -58,10 +80,21 @@ def _bool_series(series: pd.Series) -> pd.Series:
     return series.map(lambda x: mapping.get(str(x).strip().lower(), bool(x) if pd.notna(x) else False)).astype(bool)
 
 
+def _nullable_bool_series(series: pd.Series) -> pd.Series:
+    return series.map(_bool_scalar).astype("boolean")
+
+
 def _numeric(frame: pd.DataFrame, columns: list[str]) -> None:
     for col in columns:
         if col in frame.columns:
             frame[col] = pd.to_numeric(frame[col], errors="coerce")
+
+
+def _first_numeric_column(frame: pd.DataFrame, candidates: tuple[str, ...]) -> tuple[pd.Series, str | None]:
+    for col in candidates:
+        if col in frame.columns:
+            return pd.to_numeric(frame[col], errors="coerce"), col
+    return pd.Series(np.nan, index=frame.index, dtype=float), None
 
 
 def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
@@ -71,7 +104,7 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
     board.columns = [str(c).strip() for c in board.columns]
     missing = [c for c in REQUIRED_V11_COLUMNS if c not in board.columns]
     if missing:
-        raise DataValidationError("Missing V1.1 decision-board columns: " + ", ".join(missing))
+        raise DataValidationError("Missing CBB 1.1.x decision-board columns: " + ", ".join(missing))
 
     slate_date = _single_text(board, "Target Date")
     try:
@@ -81,12 +114,12 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
 
     model_version = _single_text(board, "Model Version")
     if not model_version.startswith("1.1"):
-        raise DataValidationError(f"Intelligence Terminal V1.1 expects a 1.1.x challenger board; received {model_version}.")
+        raise DataValidationError(f"Champion Terminal expects a compatible 1.1.x board; received {model_version}.")
 
     if board["Game ID"].isna().any() or board["Game ID"].duplicated().any():
         raise DataValidationError("Game ID must be present and unique for every row.")
 
-    _numeric(board, [
+    numeric_columns = [
         "Rank", "D1 Rank", "Win Probability", "Confidence Score", "Projected Away Score",
         "Projected Home Score", "Projected Total", "Projected Winner Margin", "Fair Spread",
         "Fair Moneyline", "Home Win Probability", "Away Win Probability", "Fair Home Spread",
@@ -95,13 +128,19 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
         "V1.0.1 Baseline Confidence Score", "V1.0.1 Baseline Projected Away Score",
         "V1.0.1 Baseline Projected Home Score", "V1.0.1 Baseline Projected Total",
         "V1.0.1 Baseline Projected Winner Margin", "V1.0.1 Baseline Fair Spread",
-        "V1.0.1 Baseline Fair Moneyline", "Schedule Translation Margin Adj",
-        "Schedule Translation Raw Adj", "Schedule Translation Linear Beta", "Schedule Translation Hinge Beta",
-        "Schedule Translation Training Games", "Expected Pace", "Home AdjO", "Home AdjD", "Home AdjNet",
-        "Away AdjO", "Away AdjD", "Away AdjNet", "Home SOS", "Away SOS", "V1.1 Home D1 SOS",
-        "V1.1 Away D1 SOS", "SOS Difference Home-Away", "Home Matchup Adj /100", "Away Matchup Adj /100",
-        "Home Availability Adj", "Away Availability Adj", "Data Quality", "Minutes Before Tip",
-    ])
+        "V1.0.1 Baseline Fair Moneyline", "V1.0.1 Baseline Home Win Probability",
+        "Schedule Translation Margin Adj", "Schedule Translation Raw Adj", "Schedule Translation Linear Beta",
+        "Schedule Translation Hinge Beta", "Schedule Translation Training Games", "Expected Pace", "Home AdjO",
+        "Home AdjD", "Home AdjNet", "Away AdjO", "Away AdjD", "Away AdjNet", "Home SOS", "Away SOS",
+        "V1.1 Home D1 SOS", "V1.1 Away D1 SOS", "Home D1 SOS", "Away D1 SOS", "SOS Difference Home-Away",
+        "Home Matchup Adj /100", "Away Matchup Adj /100", "Home Availability Adj", "Away Availability Adj",
+        "Data Quality", "Minutes Before Tip", "Champion Baseline Home Margin", "Champion Calibrated Home Margin",
+        "Champion Margin Calibration Adj", "Champion Training Games", "Champion Training Dates",
+        "V1.1.3B Margin Adjustment", "V1.1.3B Training Games",
+        "Home PPG", "Away PPG", "Home PPG Allowed", "Away PPG Allowed",
+        "Home Points Per Game", "Away Points Per Game", "Home Points Allowed Per Game", "Away Points Allowed Per Game",
+    ]
+    _numeric(board, numeric_columns)
 
     for col in ["D1 Evaluation Eligible", "Home D1", "Away D1", "Neutral Site", "Availability Verified", "Deployment Eligible", "Schedule Translation Applied"]:
         if col in board.columns:
@@ -118,6 +157,10 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
     board["_is_d1"] = _bool_series(board["D1 Evaluation Eligible"])
     board["_win_prob"] = pd.to_numeric(board["Win Probability"], errors="coerce")
     board["_translation"] = pd.to_numeric(board.get("Schedule Translation Margin Adj", 0), errors="coerce").fillna(0.0)
+    champion_adj = pd.to_numeric(board.get("Champion Margin Calibration Adj", pd.Series(np.nan, index=board.index)), errors="coerce")
+    fallback_b = pd.to_numeric(board.get("V1.1.3B Margin Adjustment", pd.Series(np.nan, index=board.index)), errors="coerce")
+    board["_champion_adj"] = champion_adj.where(champion_adj.notna(), fallback_b)
+    board["_display_adj"] = board["_champion_adj"].where(board["_champion_adj"].notna(), board["_translation"])
     board["_data_quality"] = pd.to_numeric(board.get("Data Quality", np.nan), errors="coerce")
     board["_availability_verified"] = _bool_series(board.get("Availability Verified", pd.Series(False, index=board.index)))
     board["_neutral"] = _bool_series(board.get("Neutral Site", pd.Series(False, index=board.index)))
@@ -125,11 +168,22 @@ def normalize_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardReport]:
     board["_baseline_pick"] = board.get("V1.0.1 Baseline Pick", "").fillna("").astype(str)
     board["_pick_changed"] = board["Model Pick"].astype(str).ne(board["_baseline_pick"])
     board["_game_label"] = board["Away Team"].astype(str) + " @ " + board["Home Team"].astype(str)
+    board["_is_champion"] = board["Model Version"].astype(str).str.upper().eq("1.1.3B")
 
     if "Start Time UTC" in board.columns:
         board["_start_dt"] = pd.to_datetime(board["Start Time UTC"], errors="coerce", utc=True)
     else:
         board["_start_dt"] = pd.NaT
+
+    # Result placeholders are present on every board so card rendering remains simple.
+    board["_grade_eligible"] = False
+    board["_final_away"] = np.nan
+    board["_final_home"] = np.nan
+    board["_actual_winner"] = ""
+    board["_ml_correct"] = pd.Series([pd.NA] * len(board), dtype="boolean")
+    board["_spread_correct"] = pd.Series([pd.NA] * len(board), dtype="boolean")
+    board["_market_home_spread"] = np.nan
+    board["_spread_source"] = ""
 
     warnings: list[str] = []
     if not board["_availability_verified"].any():
@@ -158,16 +212,79 @@ def normalize_graded_board(frame: pd.DataFrame) -> tuple[pd.DataFrame, BoardRepo
         raise DataValidationError("Missing graded-board columns: " + ", ".join(missing))
     _numeric(board, [
         "Final Away Score", "Final Home Score", "Actual Home Margin", "Actual Total",
-        "Model Winner Correct", "Margin Error", "Absolute Margin Error", "Total Error",
-        "Absolute Total Error", "Brier Component", "Log Loss Component",
-        "V1.0.1 Baseline Winner Correct", "V1.0.1 Baseline Margin Error",
-        "V1.0.1 Baseline Absolute Margin Error", "V1.0.1 Baseline Brier Component",
+        "Margin Error", "Absolute Margin Error", "Total Error", "Absolute Total Error", "Brier Component", "Log Loss Component",
+        "V1.0.1 Baseline Margin Error", "V1.0.1 Baseline Absolute Margin Error", "V1.0.1 Baseline Brier Component",
         "V1.0.1 Baseline Log Loss Component", "V1.1 Margin Error Improvement",
+        *MARKET_HOME_SPREAD_COLUMNS,
     ])
     for col in ["Grade Eligible", "Primary Evaluation Eligible"]:
         if col in board.columns:
             board[col] = _bool_series(board[col])
+
+    board["_grade_eligible"] = _bool_series(board["Grade Eligible"])
+    board["_final_away"] = pd.to_numeric(board["Final Away Score"], errors="coerce")
+    board["_final_home"] = pd.to_numeric(board["Final Home Score"], errors="coerce")
+    board["_actual_winner"] = board["Actual Winner"].fillna("").astype(str)
+    board["_ml_correct"] = _nullable_bool_series(board["Model Winner Correct"])
+
+    explicit_result = None
+    explicit_source = None
+    for col in EXPLICIT_SPREAD_RESULT_COLUMNS:
+        if col in board.columns:
+            explicit_result = _nullable_bool_series(board[col])
+            explicit_source = col
+            break
+
+    market_home, market_source = _first_numeric_column(board, MARKET_HOME_SPREAD_COLUMNS)
+    board["_market_home_spread"] = market_home
+    if explicit_result is not None:
+        board["_spread_correct"] = explicit_result
+        board["_spread_source"] = explicit_source or ""
+    elif market_source:
+        actual_home_margin = pd.to_numeric(board.get("Actual Home Margin"), errors="coerce")
+        ats_margin = actual_home_margin + market_home
+        pick_home = board["Model Pick"].astype(str).eq(board["Home Team"].astype(str))
+        pick_away = board["Model Pick"].astype(str).eq(board["Away Team"].astype(str))
+        result = pd.Series(pd.NA, index=board.index, dtype="boolean")
+        valid = board["_grade_eligible"] & ats_margin.notna() & market_home.notna() & ats_margin.ne(0)
+        result.loc[valid & pick_home] = ats_margin.loc[valid & pick_home] > 0
+        result.loc[valid & pick_away] = ats_margin.loc[valid & pick_away] < 0
+        board["_spread_correct"] = result
+        board["_spread_source"] = market_source
+    else:
+        board["_spread_correct"] = pd.Series(pd.NA, index=board.index, dtype="boolean")
+        board["_spread_source"] = ""
     return board, report
+
+
+def attach_grading(board: pd.DataFrame, grading: pd.DataFrame | None) -> pd.DataFrame:
+    """Attach official result fields to an already-normalized prediction board.
+
+    Grading is display-only. The original prediction values are never overwritten.
+    ATS is graded only from an explicit result field or a stored sportsbook home
+    spread; model fair spread is intentionally never treated as a sportsbook line.
+    """
+    if grading is None or grading.empty:
+        return board.copy()
+    graded, _ = normalize_graded_board(grading)
+    result_cols = [
+        "Game ID", "_grade_eligible", "_final_away", "_final_home", "_actual_winner",
+        "_ml_correct", "_spread_correct", "_market_home_spread", "_spread_source",
+    ]
+    right = graded[result_cols].copy()
+    left = board.copy()
+    left["__gid"] = left["Game ID"].astype(str)
+    right["__gid"] = right["Game ID"].astype(str)
+    right = right.drop(columns=["Game ID"])
+    # Drop placeholders so merge cannot create duplicated columns.
+    placeholders = [c for c in result_cols if c != "Game ID" and c in left.columns]
+    left = left.drop(columns=placeholders)
+    out = left.merge(right, on="__gid", how="left", validate="one_to_one").drop(columns=["__gid"])
+    out["_grade_eligible"] = out["_grade_eligible"].fillna(False).astype(bool)
+    for col in ["_ml_correct", "_spread_correct"]:
+        out[col] = out[col].astype("boolean")
+    out["_spread_source"] = out["_spread_source"].fillna("")
+    return out
 
 
 def board_table(frame: pd.DataFrame) -> pd.DataFrame:
@@ -175,9 +292,11 @@ def board_table(frame: pd.DataFrame) -> pd.DataFrame:
         "Rank", "D1 Rank", "Away Team", "Home Team", "Neutral Site", "Game Classification",
         "Model Pick", "Win Probability", "Projected Away Score", "Projected Home Score",
         "Fair Spread", "Fair Moneyline", "Projected Total", "Expected Pace", "Confidence Score",
-        "Schedule Translation Margin Adj", "V1.0.1 Baseline Pick", "V1.0.1 Baseline Win Probability",
-        "V1.0.1 Baseline Fair Spread", "Home AdjNet", "Away AdjNet", "V1.1 Home D1 SOS",
-        "V1.1 Away D1 SOS", "Data Quality", "Availability Verified",
+        "Champion Margin Calibration Adj", "V1.1.3B Margin Adjustment", "V1.0.1 Baseline Pick",
+        "V1.0.1 Baseline Win Probability", "V1.0.1 Baseline Fair Spread", "Home AdjO", "Home AdjD",
+        "Home AdjNet", "Away AdjO", "Away AdjD", "Away AdjNet", "V1.1 Home D1 SOS", "V1.1 Away D1 SOS",
+        "Home SOS", "Away SOS", "Home PPG", "Away PPG", "Home PPG Allowed", "Away PPG Allowed",
+        "Data Quality", "Availability Verified",
     ]
     return frame[[c for c in wanted if c in frame.columns]].copy()
 

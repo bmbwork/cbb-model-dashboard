@@ -63,14 +63,14 @@ def challenger_comparison_chart(row: pd.Series) -> go.Figure:
     challenger = abs(float(pd.to_numeric(row.get("Projected Winner Margin"), errors="coerce") or 0))
     baseline = abs(float(pd.to_numeric(row.get("V1.0.1 Baseline Projected Winner Margin"), errors="coerce") or 0))
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=["V1.0.1", "V1.1"], y=[baseline, challenger], marker_color=[BASE, ACCENT], text=[f"{baseline:.1f}", f"{challenger:.1f}"], textposition="outside"))
+    fig.add_trace(go.Bar(x=["V1.0.1", str(row.get("Model Version") or "Published")], y=[baseline, challenger], marker_color=[BASE, ACCENT], text=[f"{baseline:.1f}", f"{challenger:.1f}"], textposition="outside"))
     fig.update_yaxes(title="Projected winner margin")
-    return _layout(fig, "Projected margin: baseline vs challenger")
+    return _layout(fig, "Projected margin: anchor vs published model")
 
 
 def performance_trend(history: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["Margin MAE"], mode="lines+markers", name="V1.1", line=dict(color=ACCENT)))
+    fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["Margin MAE"], mode="lines+markers", name="Published model", line=dict(color=ACCENT)))
     if "V1.0.1 Margin MAE" in history.columns and history["V1.0.1 Margin MAE"].notna().any():
         fig.add_trace(go.Scatter(x=history["Slate Date"], y=history["V1.0.1 Margin MAE"], mode="lines+markers", name="V1.0.1", line=dict(color=BASE)))
     fig.update_yaxes(title="Margin MAE (points)")

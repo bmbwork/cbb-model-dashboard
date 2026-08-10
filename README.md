@@ -1,35 +1,21 @@
-# CBB Model Dashboard v1.1 — Intelligence Terminal
+# CBB Model Dashboard v1.2 — Champion Terminal
 
-A Streamlit publishing and intelligence interface for the **CBB Independent Game Engine V1.1 Schedule Translation Challenger**.
+Streamlit presentation layer for the CBB V1.1.3B production champion. The website remains downstream and read-only for public users: it displays published model output and official grading but never reruns or alters the prediction engine.
 
-The design intentionally follows the established HR dashboard interaction model—dark surface, left navigation, ranked cards, compact metric tiles, public read-only pages and an owner-only Publishing Studio—while giving college basketball its own identity: charcoal/burgundy surfaces, basketball orange as the primary accent, teal probability highlights and score-first matchup cards.
+## v1.2 highlights
 
-## What is included
+- Fixes the multi-card raw-HTML rendering defect by compacting generated card markup before Streamlit Markdown rendering.
+- Rebrands the main surface around **V1.1.3B Production Champion** while preserving old 1.1.x archive compatibility.
+- Adds expandable **Game Intelligence Dossiers** with “Why we like the pick”, “Risks / reasons for caution”, and side-by-side team profiles.
+- Adds quick matchup fields for AdjO, AdjD, AdjNet, D-I SOS, matchup adjustments, availability, uncertainty, and optional true pregame PPG / PPG allowed.
+- Adds graded result ribbons: green **ML W** and gold **SPREAD W**.
+- ATS/spread grading is deliberately shown only when an explicit spread result or a stored sportsbook home spread exists. The model's own fair spread is never treated as the sportsbook line.
+- Performance Lab defaults to V1.1.3B-only evidence once champion grading exists, keeping archived challenger results separate.
 
-- **Today's Board** — ranked V1.1 matchup cards, model score projections, fair spread / fair moneyline, pace, D-I cohort markers, schedule-translation context and a full searchable board.
-- **Matchup Explorer** — V1.1 vs frozen V1.0.1 comparison, team-strength chart, simulation interval, schedule-strength translation and plain-language support/risk readout.
-- **Team Intelligence** — adjusted offense, defense, net efficiency, D-I SOS, matchup adjustment, availability adjustment and opponent context.
-- **Performance Laboratory (early backend)** — cumulative V1.1 vs V1.0.1 walk-forward metrics once graded challenger slates are published. This is observational only.
-- **Model Guide** — explains the independent engine, D-I cohort, confidence, availability and market firewall.
-- **Admin Studio** — Google OIDC owner access for publishing decision-board and graded-board CSVs to Supabase.
+## No database migration required
 
-## Security boundary
+v1.2 continues to use the existing `cbb_slates` board/grading JSON storage. Existing Streamlit secrets and Supabase RLS configuration remain valid.
 
-The public site is read-only. File upload widgets exist only inside the authorized Admin Studio. Supabase public access is SELECT-only through Row Level Security; database writes use the server-side secret key. The raw admin email is not stored in the published slate table; a short one-way audit identifier is used instead.
+## Deploy
 
-The model engine itself is not part of this repository. The website reads model outputs and never changes CBB V1.1 rankings, probabilities, spreads or scores.
-
-## Quick local run
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 -m streamlit run app.py
-```
-
-For local OIDC, use a local `.streamlit/secrets.toml` that is **not committed**. See `SECURITY_AND_PUBLISHING_SETUP.md`.
-
-## Production deployment
-
-See `DEPLOY_STREAMLIT.md` for GitHub + Streamlit Community Cloud deployment and `supabase/schema.sql` for the persistence layer.
+Use the included `upgrade_github_v1_2.sh` from the patch package, or replace the repository files and push `main` normally. Streamlit Community Cloud will redeploy from GitHub.
