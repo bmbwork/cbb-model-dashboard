@@ -65,18 +65,46 @@ class SupabaseSlateStore:
         except Exception as exc:
             raise StorageOperationError(f"Supabase table `{self.TABLE}` is not ready or not accessible: {type(exc).__name__}") from exc
 
-    def latest(self) -> dict[str, Any] | None:
+    @staticmethod
+    def _publish_sort_key(record: dict[str, Any]) -> tuple[int, str, int]:
+        """Sort published boards by upload/publish time, not game date.
+
+        `published_at` is refreshed whenever a decision board is published in
+        Admin Studio. Grading updates do not change it, so grading an older
+        slate cannot unexpectedly become the default public board.
+        """
+        stamp = pd.to_datetime(record.get("published_at"), utc=True, errors="coerce")
+        stamp_ns = -1 if pd.isna(stamp) else int(stamp.value)
+        slate_date = str(record.get("slate_date") or "")
         try:
-            resp = self._public.table(self.TABLE).select("*").order("slate_date", desc=True).limit(1).execute()
-            data = self._data(resp)
-            return dict(data[0]) if data else None
-        except Exception as exc:
-            raise StorageOperationError(f"Could not read latest published CBB slate: {type(exc).__name__}") from exc
+            revision = int(record.get("revision") or 0)
+        except (TypeError, ValueError):
+            revision = 0
+        return stamp_ns, slate_date, revision
+
+    @classmethod
+    def sort_records_by_publish_recency(cls, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            (dict(record) for record in records),
+            key=cls._publish_sort_key,
+            reverse=True,
+        )
+
+    def latest(self) -> dict[str, Any] | None:
+        records = self.list_records(limit=1)
+        return records[0] if records else None
 
     def list_records(self, limit: int = 80) -> list[dict[str, Any]]:
         try:
-            resp = self._public.table(self.TABLE).select("*").order("slate_date", desc=True).limit(int(limit)).execute()
-            return [dict(x) for x in self._data(resp)]
+            resp = (
+                self._public.table(self.TABLE)
+                .select("*")
+                .order("published_at", desc=True)
+                .order("slate_date", desc=True)
+                .limit(int(limit))
+                .execute()
+            )
+            return self.sort_records_by_publish_recency([dict(x) for x in self._data(resp)])
         except Exception as exc:
             raise StorageOperationError(f"Could not read published CBB history: {type(exc).__name__}") from exc
 

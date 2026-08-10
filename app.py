@@ -511,7 +511,12 @@ with st.sidebar:
     st.caption("Public dashboard · read-only")
     if records:
         dates = [str(r.get("slate_date")) for r in records if r.get("slate_date")]
-        selected_date = st.selectbox("Published slate", dates, index=0)
+        selected_date = st.selectbox(
+            "Published slate",
+            dates,
+            index=0,
+            help="Defaults to the most recently published decision board, regardless of game date.",
+        )
     else:
         selected_date = None
 
