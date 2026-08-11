@@ -109,7 +109,10 @@ def test_odds_api_does_not_fabricate_betting_splits(board_df):
     board, _ = normalize_board(raw)
     out = attach_market_to_board(board, normalized)
     html = market_pulse_html(out.iloc[0])
-    assert "Not provided" in html
+    assert "Not provided" not in html
+    assert "SPORTSBOOK LINE" in html
+    assert "LINE MOVEMENT" in html
+    assert "BOOK CONSENSUS" in html
     assert "The Odds API" in html
 
 

@@ -495,19 +495,39 @@ def market_pulse_html(row: pd.Series) -> str:
     current = _num(row, "_market_current_home_spread")
     home = str(row.get("Home Team") or "Home")
     if not has_split and not (np.isfinite(opening) or np.isfinite(current)):
-        return compact_html('<div class="market-pulse empty"><div class="market-pulse-title">MARKET PULSE</div><div class="market-empty">Sportsbook lines and betting splits are not available for this game yet.</div></div>')
+        return compact_html('<div class="market-pulse empty"><div class="market-pulse-head"><span>MARKET PULSE</span></div><div class="market-empty">Sportsbook lines are not available for this game yet.</div></div>')
 
-    ticket = f"{f['ticket_team']} {_pct_text(f['ticket_pct'])}" if f["ticket_team"] else "Not provided"
-    money = f"{f['money_team']} {_pct_text(f['money_pct'])}" if f["money_team"] else "Not provided"
-    if np.isfinite(opening) and np.isfinite(current) and abs(opening - current) >= 0.05:
-        line = f"{home} {opening:+.1f} → {current:+.1f}"
-        line_note = "first saved/opening → current"
-    elif np.isfinite(current):
-        line = f"{home} {current:+.1f}"
-        line_note = "current line · first tracked snapshot" if np.isfinite(opening) else "current line"
+    if np.isfinite(current):
+        line_value = f"{home} {current:+.1f}"
+    elif np.isfinite(opening):
+        line_value = f"{home} {opening:+.1f}"
     else:
-        line = "—"
-        line_note = "sportsbook spread"
+        line_value = "--"
+
+    if np.isfinite(opening) and np.isfinite(current) and abs(opening - current) >= 0.05:
+        move_value = f"{opening:+.1f} to {current:+.1f}"
+        if f["line_move_team"] and np.isfinite(f["line_move_points"]):
+            move_note = f"{f['line_move_points']:.1f} pts toward {f['line_move_team']}"
+        else:
+            move_note = "tracked movement"
+    elif np.isfinite(current):
+        move_value = "First snapshot"
+        move_note = "movement starts here"
+    else:
+        move_value = "--"
+        move_note = "no movement data"
+
+    book_agreement = str(row.get("_market_book_agreement") or "").lower()
+    book_range = _num(row, "_market_book_spread_range")
+    book_count = _num(row, "_market_book_count")
+    agreement_labels = {"tight": "Tight", "mixed": "Mixed", "wide": "Wide"}
+    agreement_value = agreement_labels.get(book_agreement, "Available" if np.isfinite(book_range) else "--")
+    agreement_note_parts: list[str] = []
+    if np.isfinite(book_count):
+        agreement_note_parts.append(f"{int(book_count)} books")
+    if np.isfinite(book_range):
+        agreement_note_parts.append(f"{book_range:.1f} pt range")
+    agreement_note = " · ".join(agreement_note_parts) if agreement_note_parts else "cross-book spread view"
 
     reads: list[str] = []
     if f["public_heavy"] and f["ticket_team"]:
@@ -519,38 +539,51 @@ def market_pulse_html(row: pd.Series) -> str:
     if f["line_move_team"] and np.isfinite(f["line_move_points"]):
         reads.append(f"The line has moved {f['line_move_points']:.1f} points toward {f['line_move_team']}.")
     if f["reverse_line_movement"]:
-        reads.append("The line is moving against the side receiving most tickets — a market disagreement worth watching.")
-    book_agreement = str(row.get("_market_book_agreement") or "").lower()
-    book_range = _num(row, "_market_book_spread_range")
+        reads.append("The line is moving against the side receiving most tickets -- a market disagreement worth watching.")
     if book_agreement == "wide" and np.isfinite(book_range):
         reads.append(f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread.")
     elif book_agreement == "tight" and np.isfinite(book_range):
         reads.append("Sportsbooks are tightly aligned on the spread.")
     if not reads:
-        reads.append("Sportsbook line data is available; betting splits are not provided by this source." if not has_split else "Market signals are mixed or still developing.")
-    read_text = " ".join(reads[:3])
-    source = provider or "published market source"
-    stamp = f" · latest {latest[:16].replace('T',' ')} UTC" if latest else ""
+        reads.append("Sportsbook line data is available. Betting splits require a separate source." if not has_split else "Market signals are mixed or still developing.")
+
+    source = provider or "Published market source"
+    stamp = f"Snapshot {latest[11:16]} UTC" if len(latest) >= 16 else ""
     ticket_count = _num(row, "_market_ticket_count")
     activity = str(row.get("_market_activity_level") or "").strip()
-    sample_note = ""
+    source_bits = [source]
     if np.isfinite(ticket_count):
-        sample_note = f" · {int(ticket_count):,} tracked bets"
+        source_bits.append(f"{int(ticket_count):,} tracked bets")
         if activity:
-            sample_note += f" · {activity} activity"
+            source_bits.append(f"{activity} activity")
         if ticket_count < 250:
             reads.append("The split sample is still small, so percentages can move sharply.")
-            read_text = " ".join(reads[:3])
+    if stamp:
+        source_bits.append(stamp)
+    source_text = " · ".join(source_bits)
+    read_text = " ".join(reads[:3])
     css = "reverse" if f["reverse_line_movement"] else "live"
+
+    if has_split:
+        ticket = f"{f['ticket_team']} {_pct_text(f['ticket_pct'])}" if f["ticket_team"] else "--"
+        money = f"{f['money_team']} {_pct_text(f['money_pct'])}" if f["money_team"] else "--"
+        stats = (
+            f'<div class="market-pulse-stat"><span>BETS</span><strong>{esc(ticket)}</strong><small>share of tickets</small></div>'
+            f'<div class="market-pulse-stat"><span>MONEY</span><strong>{esc(money)}</strong><small>share of money</small></div>'
+            f'<div class="market-pulse-stat"><span>SPORTSBOOK LINE</span><strong>{esc(line_value)}</strong><small>current reference line</small></div>'
+        )
+    else:
+        stats = (
+            f'<div class="market-pulse-stat"><span>SPORTSBOOK LINE</span><strong>{esc(line_value)}</strong><small>current reference line</small></div>'
+            f'<div class="market-pulse-stat"><span>LINE MOVEMENT</span><strong>{esc(move_value)}</strong><small>{esc(move_note)}</small></div>'
+            f'<div class="market-pulse-stat"><span>BOOK CONSENSUS</span><strong>{esc(agreement_value)}</strong><small>{esc(agreement_note)}</small></div>'
+        )
+
     html = (
         f'<div class="market-pulse {css}">'
-        f'<div class="market-pulse-head"><span>MARKET PULSE</span><em>{esc(source)}{esc(sample_note)}{esc(stamp)}</em></div>'
-        '<div class="market-pulse-grid">'
-        f'<div><span>BETS</span><strong>{esc(ticket)}</strong><small>{"share of tickets" if has_split else "separate splits source"}</small></div>'
-        f'<div><span>MONEY</span><strong>{esc(money)}</strong><small>{"share of money" if has_split else "separate splits source"}</small></div>'
-        f'<div><span>LINE</span><strong>{esc(line)}</strong><small>{esc(line_note)}</small></div>'
-        '</div>'
-        f'<p>{esc(read_text)}</p></div>'
+        f'<div class="market-pulse-head"><span>MARKET PULSE</span><em>{esc(source_text)}</em></div>'
+        f'<div class="market-pulse-grid">{stats}</div>'
+        f'<p class="market-pulse-read">{esc(read_text)}</p></div>'
     )
     return compact_html(html)
 
