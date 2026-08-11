@@ -35,7 +35,7 @@ class OwlsInsightSplitsProvider:
         self.session.headers.update({
             "Accept": "application/json",
             "Authorization": f"Bearer {key}",
-            "User-Agent": "cbb-market-terminal/1.4.6",
+            "User-Agent": "cbb-market-terminal/1.4.7",
         })
         self.last_rate_headers: dict[str, str] = {}
 
@@ -91,52 +91,6 @@ class OwlsInsightSplitsProvider:
 
     def live_splits(self) -> Any:
         return self._get("/api/v1/ncaab/splits")
-
-    def historical_public_betting(self, slate_date: str) -> Any:
-        """Fetch one completed NCAAB slate from the MVP historical archive.
-
-        Owls documents a maximum page size of 100 for /history/public-betting,
-        so Saturday college slates must be paginated rather than assuming a
-        single response contains every game.
-        """
-        day = pd.to_datetime(slate_date, errors="coerce")
-        if pd.isna(day):
-            raise MarketDataError("Owls Insight historical refresh needs a valid slate date.")
-        date_str = day.strftime("%Y-%m-%d")
-        rows: list[Any] = []
-        offset = 0
-        pages = 0
-        seen_signatures: set[tuple[str, ...]] = set()
-        while True:
-            payload = self._get(
-                "/api/v1/history/public-betting",
-                params={"sport": "ncaab", "startDate": date_str, "endDate": date_str, "limit": 100, "offset": offset},
-            )
-            page = self._data_list(payload)
-            pages += 1
-            if not page:
-                break
-            # Defensive guard against a provider accidentally ignoring offset.
-            signature = tuple(self._event_id(x) or str(x)[:120] for x in page[:5])
-            if signature in seen_signatures:
-                break
-            seen_signatures.add(signature)
-            rows.extend(page)
-            if len(page) < 100:
-                break
-            offset += 100
-            if offset >= 5000:
-                break
-        return {
-            "sport": "ncaab",
-            "data": rows,
-            "meta": {
-                "historical": True,
-                "date": date_str,
-                "pages_fetched": pages,
-                "records_fetched": len(rows),
-            },
-        }
 
     @classmethod
     def _data_list(cls, payload: Any) -> list[dict[str, Any]]:
@@ -370,14 +324,18 @@ class OwlsInsightSplitsProvider:
         }
         return frame, health
 
-    def refresh(self, board: pd.DataFrame, slate_date: str | None = None, historical: bool = False) -> tuple[pd.DataFrame, dict[str, Any]]:
-        payload = self.historical_public_betting(slate_date or "") if historical else self.live_splits()
+    def refresh(self, board: pd.DataFrame, slate_date: str | None = None) -> tuple[pd.DataFrame, dict[str, Any]]:
+        """Fetch the current NCAAB split feed and map it to the selected live board.
+
+        V1.4.7 intentionally does not use Owls historical public-betting backfill.
+        Historical split history is built from snapshots captured live into our
+        private Supabase archive.
+        """
+        payload = self.live_splits()
         frame, health = self.parse(payload, board)
-        meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
-        health["mode"] = "historical" if historical else "live"
-        health["requested_date"] = str(meta.get("date") or slate_date or "")
-        health["pages_fetched"] = int(meta.get("pages_fetched") or (1 if historical else 0))
-        health["records_fetched"] = int(meta.get("records_fetched") or health.get("provider_events", 0))
+        health["mode"] = "live"
+        health["requested_date"] = str(slate_date or "")
+        health["records_fetched"] = int(health.get("provider_events", 0))
         return frame, health
 
 
@@ -437,15 +395,15 @@ def _row_sharp_candidate(row: pd.Series, home: str, away: str) -> dict[str, Any]
         ticket_team, _ = _leader("Over", "Under", float(ticket_over), float(ticket_under))
         money_team, _ = _leader("Over", "Under", float(money_over), float(money_under))
     else:
-        return {"side": "", "gap": float("nan"), "strength": "", "signal": "none", "read": ""}
+        return {"side": "", "gap": float("nan"), "strength": "", "signal": "none", "read": "", "ticket_leader": "", "money_leader": ""}
 
     if not candidates:
-        return {"side": "", "gap": float("nan"), "strength": "", "signal": "none", "read": ""}
+        return {"side": "", "gap": float("nan"), "strength": "", "signal": "none", "read": "", "ticket_leader": "", "money_leader": ""}
     side, gap = max(candidates, key=lambda x: x[1])
     leader_flip = bool(ticket_team and money_team and ticket_team != money_team and side == money_team)
     strength = _sharp_strength(gap, leader_flip=leader_flip)
     if not strength:
-        return {"side": "", "gap": gap, "strength": "", "signal": "none", "read": ""}
+        return {"side": "", "gap": gap, "strength": "", "signal": "none", "read": "", "ticket_leader": ticket_team, "money_leader": money_team}
 
     if leader_flip:
         read = f"Money leads toward {side} even though more individual bets are on the other side."
@@ -453,7 +411,7 @@ def _row_sharp_candidate(row: pd.Series, home: str, away: str) -> dict[str, Any]
     else:
         read = f"The dollar share on {side} is meaningfully heavier than its share of individual bets."
         signal = "money_over_tickets"
-    return {"side": side, "gap": gap, "strength": strength, "signal": signal, "read": read}
+    return {"side": side, "gap": gap, "strength": strength, "signal": signal, "read": read, "ticket_leader": ticket_team, "money_leader": money_team}
 
 
 def annotate_sharp_money_signals(raw_splits: pd.DataFrame, board: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -470,6 +428,8 @@ def annotate_sharp_money_signals(raw_splits: pd.DataFrame, board: pd.DataFrame |
         for _, b in board.iterrows():
             names[str(b.get("Game ID") or "")] = (str(b.get("Home Team") or "Home"), str(b.get("Away Team") or "Away"))
 
+    ticket_leaders: list[str] = []
+    money_leaders: list[str] = []
     sides: list[str] = []
     gaps: list[float] = []
     strengths: list[str] = []
@@ -479,6 +439,8 @@ def annotate_sharp_money_signals(raw_splits: pd.DataFrame, board: pd.DataFrame |
     for _, row in frame.iterrows():
         home, away = names.get(str(row.get("Game ID") or ""), ("Home", "Away"))
         sharp = _row_sharp_candidate(row, home, away)
+        ticket_leaders.append(str(sharp.get("ticket_leader") or ""))
+        money_leaders.append(str(sharp.get("money_leader") or ""))
         sides.append(str(sharp["side"] or ""))
         gaps.append(float(sharp["gap"]) if np.isfinite(sharp["gap"]) else np.nan)
         strengths.append(str(sharp["strength"] or ""))
@@ -490,6 +452,8 @@ def annotate_sharp_money_signals(raw_splits: pd.DataFrame, board: pd.DataFrame |
             provider_signals.append(" | ".join(x for x in [existing, token] if x))
         else:
             provider_signals.append(existing)
+    frame["Ticket Leader"] = ticket_leaders
+    frame["Money Leader"] = money_leaders
     frame["Sharp Side"] = sides
     frame["Sharp Gap Pts"] = gaps
     frame["Sharp Strength"] = strengths

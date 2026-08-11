@@ -97,6 +97,15 @@ create table if not exists public.cbb_market_snapshots (
     home_spread_max numeric,
     book_spread_range numeric,
     book_agreement text,
+    ticket_leader text,
+    money_leader text,
+    sharp_side text,
+    sharp_gap_pts numeric,
+    sharp_strength text,
+    sharp_signal text,
+    sharp_read text,
+    sharp_rule_version text,
+    capture_trigger text,
     raw_snapshot_hash text not null unique,
     published_by text,
     created_at timestamptz not null default now(),
@@ -244,4 +253,18 @@ alter table public.cbb_game_context add column if not exists betting_sharp_confi
 alter table public.cbb_game_context add column if not exists betting_sharp_note text;
 alter table public.cbb_game_context add column if not exists betting_sharp_books text;
 
+notify pgrst, 'reload schema';
+
+-- CBB Dashboard v1.4.7 — persist owner-only live split diagnostics.
+alter table public.cbb_owner_betting_splits add column if not exists ticket_leader text;
+alter table public.cbb_owner_betting_splits add column if not exists money_leader text;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_side text;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_gap_pts numeric;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_strength text;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_signal text;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_read text;
+alter table public.cbb_owner_betting_splits add column if not exists sharp_rule_version text;
+alter table public.cbb_owner_betting_splits add column if not exists capture_trigger text;
+create index if not exists cbb_owner_betting_splits_archive_idx
+    on public.cbb_owner_betting_splits (slate_date, sportsbook_scope, market_type, snapshot_time_utc);
 notify pgrst, 'reload schema';

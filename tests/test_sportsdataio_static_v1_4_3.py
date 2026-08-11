@@ -12,7 +12,7 @@ def test_owls_secret_is_top_level_before_auth():
 
 def test_admin_exposes_owls_refresh_and_owner_guard():
     app = (ROOT / "app.py").read_text()
-    assert "Refresh Owls Insight betting splits" in app
+    assert "Capture live Owls betting splits now" in app
     assert "check_owner_splits_access" in app
     assert "publish_owner_split_records" in app
     assert "derive_public_betting_notes" in app
@@ -21,5 +21,5 @@ def test_admin_exposes_owls_refresh_and_owner_guard():
 def test_release_keeps_the_odds_api_as_line_provider():
     app = (ROOT / "app.py").read_text()
     assert "Refresh The Odds API market lines" in app
-    assert "Owls Insight betting splits" in app
+    assert "Owls Insight live splits" in app
     assert "SPORTSBOOK LINE" not in app or "SPORTSBOOK LINE" in (ROOT / "cbb_dashboard" / "intelligence.py").read_text()

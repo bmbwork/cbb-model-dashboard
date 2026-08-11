@@ -79,7 +79,7 @@ class SupabaseSlateStore:
     def check_owner_splits_access(self) -> None:
         client = self._admin_client()
         try:
-            client.table(self.OWNER_SPLITS_TABLE).select("slate_date").limit(1).execute()
+            client.table(self.OWNER_SPLITS_TABLE).select("slate_date,sharp_side,sharp_signal,capture_trigger").limit(1).execute()
         except Exception as exc:
             raise StorageOperationError(f"Supabase owner-only splits table `{self.OWNER_SPLITS_TABLE}` is not ready: {type(exc).__name__}") from exc
 
@@ -94,6 +94,24 @@ class SupabaseSlateStore:
         except Exception as exc:
             raise StorageOperationError(f"Could not read owner-only betting splits: {type(exc).__name__}") from exc
 
+    def latest_owner_split_capture_time(self, slate_date: str) -> str | None:
+        client = self._admin_client()
+        try:
+            resp = (
+                client.table(self.OWNER_SPLITS_TABLE)
+                .select("updated_at")
+                .eq("slate_date", slate_date)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            rows = self._data(resp)
+            if not rows:
+                return None
+            return str(rows[0].get("updated_at") or "") or None
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read latest owner-only split capture time: {type(exc).__name__}") from exc
+
     def publish_owner_split_records(self, records: list[dict[str, Any]]) -> int:
         if not records:
             return 0
@@ -102,7 +120,9 @@ class SupabaseSlateStore:
         payload = []
         for record in records:
             row = dict(record)
-            row.setdefault("created_at", now)
+            # Let Postgres set created_at on first insert so the original capture
+            # time remains immutable when a duplicate provider snapshot is upserted.
+            row.pop("created_at", None)
             row["updated_at"] = now
             payload.append(row)
         try:

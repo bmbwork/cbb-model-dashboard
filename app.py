@@ -76,7 +76,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.6"
+APP_VERSION = "1.4.7"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",
@@ -811,119 +811,124 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             else:
                 st.info("The Odds API is the primary sportsbook-line source, but THE_ODDS_API_KEY is not configured. Add it in Streamlit Secrets or use the manual imports below.")
 
-            st.markdown("##### Owls Insight betting splits + sharp-money read — owner view")
+            st.markdown("##### Owls Insight live splits + private archive — owner view")
             if owls_key and not market_board.empty:
-                st.success("Owls Insight is configured. Raw ticket/handle percentages and sharp diagnostics stay owner-only; public pages receive only derived plain-English commentary.")
+                st.success("Owls Insight is configured. Every live capture automatically appends the raw DraftKings/Circa ticket and handle splits plus the dashboard sharp-money diagnostics to the private Supabase archive. Public pages receive only derived plain-English commentary.")
 
-                def run_owls_refresh(target_date: str, target_board: pd.DataFrame, historical: bool, publish_public: bool, key_suffix: str) -> None:
+                def run_owls_live_refresh(target_date: str, target_board: pd.DataFrame, publish_public: bool, key_suffix: str, show_preview: bool = True, capture_trigger: str = "manual") -> dict[str, Any]:
                     store.check_owner_splits_access()
                     cfg = OwlsInsightConfig(api_key=owls_key)
                     provider = OwlsInsightSplitsProvider(cfg)
-                    mode_text = "historical MVP archive" if historical else "live NCAAB splits"
-                    with st.spinner(f"Refreshing Owls Insight {mode_text} for {target_date} and matching games..."):
-                        split_snapshots, split_health = provider.refresh(target_board, slate_date=target_date, historical=historical)
+                    with st.spinner(f"Capturing live Owls Insight splits for {target_date} and matching games..."):
+                        split_snapshots, split_health = provider.refresh(target_board, slate_date=target_date)
                     mapped = int(split_health.get("mapped_games", 0))
                     covered = int(split_health.get("split_games", 0))
                     if split_snapshots.empty:
-                        st.warning(f"Owls Insight returned no usable split rows for {target_date}: {mapped}/{len(target_board)} games mapped, 0 games with parsed splits.")
+                        st.warning(f"Owls Insight returned no usable live split rows for {target_date}: {mapped}/{len(target_board)} games mapped, 0 games with parsed splits.")
                     else:
                         split_snapshots = annotate_sharp_money_signals(split_snapshots, target_board)
-                        raw_count = store.publish_owner_split_records(market_records(split_snapshots, actor))
+                        owner_records = market_records(split_snapshots, actor)
+                        for record in owner_records:
+                            record["capture_trigger"] = capture_trigger
+                        raw_count = store.publish_owner_split_records(owner_records)
                         public_notes = derive_public_betting_notes(target_board, split_snapshots)
                         note_count = store.publish_public_betting_notes(public_notes, actor=actor) if publish_public else 0
                         sharp_games = len({str(x.get("game_id") or "") for x in public_notes if x.get("betting_sharp_side")})
                         sharp_consensus = len({str(x.get("game_id") or "") for x in public_notes if x.get("betting_sharp_signal") == "sharp_consensus"})
                         public_status = f"{note_count} public plain-English reads updated" if publish_public else "public commentary left unchanged"
-                        st.success(f"Owls Insight refresh complete for {target_date}: {mapped}/{len(target_board)} games mapped • {covered} games with splits • {sharp_games} games with a sharp-money read ({sharp_consensus} cross-book) • {raw_count} raw rows stored owner-only • {public_status}.")
-                        preview_cols = [c for c in ["Game ID","Provider Game ID","Sportsbook Scope","Snapshot Time UTC","Market Type","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Over Ticket %","Under Ticket %","Over Money %","Under Money %","Sharp Side","Sharp Gap Pts","Sharp Strength","Sharp Signal"] if c in split_snapshots.columns]
-                        st.caption("Owner-only diagnostics — Sharp Gap Pts is money share minus ticket share on the flagged side. The dashboard uses 10+ points as a possible signal; stronger gaps or cross-book agreement receive stronger wording.")
-                        st.dataframe(split_snapshots[preview_cols].tail(120), use_container_width=True, hide_index=True)
-                        if public_notes:
-                            public_preview = pd.DataFrame(public_notes).rename(columns={
-                                "game_id":"Game ID", "betting_label":"Public label", "betting_note":"Public wording",
-                                "betting_public_side":"Ticket side", "betting_money_side":"Money side",
-                                "betting_sharp_side":"Sharp-money side", "betting_sharp_confidence":"Sharp confidence",
-                            })
-                            st.caption("Public-safe output preview — no ticket or handle percentages are included below.")
-                            st.dataframe(public_preview[[c for c in ["Game ID","Public label","Ticket side","Money side","Sharp-money side","Sharp confidence","Public wording"] if c in public_preview.columns]], use_container_width=True, hide_index=True)
-                        st.download_button(
-                            "Download owner-only split + sharp CSV from this refresh",
-                            split_snapshots.to_csv(index=False).encode("utf-8"),
-                            file_name=f"owls_owner_splits_sharp_{target_date}.csv",
-                            mime="text/csv",
-                            key=f"download_owner_owls_refresh_{key_suffix}",
-                        )
+                        st.success(f"Live Owls snapshot archived for {target_date}: {mapped}/{len(target_board)} games mapped • {covered} games with splits • {sharp_games} games with a sharp-money read ({sharp_consensus} cross-book) • {raw_count} private history rows written • {public_status}.")
+                        if show_preview:
+                            preview_cols = [c for c in ["Game ID","Provider Game ID","Sportsbook Scope","Snapshot Time UTC","Market Type","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Over Ticket %","Under Ticket %","Over Money %","Under Money %","Ticket Leader","Money Leader","Sharp Side","Sharp Gap Pts","Sharp Strength","Sharp Signal","Sharp Read"] if c in split_snapshots.columns]
+                            st.caption("Owner-only diagnostics — ticket/handle percentages and row-level sharp reads are private. Sharp Gap Pts is money share minus ticket share on the flagged side; these are dashboard heuristics, not production-model inputs.")
+                            st.dataframe(split_snapshots[preview_cols].tail(120), use_container_width=True, hide_index=True)
+                            if public_notes:
+                                public_preview = pd.DataFrame(public_notes).rename(columns={
+                                    "game_id":"Game ID", "betting_label":"Public label", "betting_note":"Public wording",
+                                    "betting_public_side":"Ticket side", "betting_money_side":"Money side",
+                                    "betting_sharp_side":"Sharp-money side", "betting_sharp_confidence":"Sharp confidence",
+                                })
+                                st.caption("Public-safe output preview — no ticket or handle percentages are included below.")
+                                st.dataframe(public_preview[[c for c in ["Game ID","Public label","Ticket side","Money side","Sharp-money side","Sharp confidence","Public wording"] if c in public_preview.columns]], use_container_width=True, hide_index=True)
+                            st.download_button(
+                                "Download this owner-only live split snapshot",
+                                split_snapshots.to_csv(index=False).encode("utf-8"),
+                                file_name=f"owls_owner_live_splits_{target_date}.csv",
+                                mime="text/csv",
+                                key=f"download_owner_owls_refresh_{key_suffix}",
+                            )
                         st.cache_data.clear()
                     if split_health.get("empty_games"):
                         st.caption(f"Mapped games without a usable split market: {len(split_health['empty_games'])}.")
-                    if historical:
-                        st.caption(f"Historical archive pages fetched: {split_health.get('pages_fetched', 0)} • provider records fetched: {split_health.get('records_fetched', 0)}.")
                     rate = split_health.get("rate") or {}
                     if rate.get("remaining_month") or rate.get("remaining_minute"):
                         st.caption(f"Owls API requests remaining — minute: {rate.get('remaining_minute') or '—'} • month: {rate.get('remaining_month') or '—'}")
+                    return split_health
 
                 selected_day = pd.to_datetime(market_date, errors="coerce")
-                today_utc = pd.Timestamp.now(tz="UTC").date()
-                historical_mode = bool(pd.notna(selected_day) and selected_day.date() < today_utc)
-                if historical_mode:
-                    st.caption("The selected slate is completed, so this refresh uses the MVP historical public-betting archive automatically.")
+                owls_today = pd.Timestamp.now(tz="America/New_York").date()
+                live_mode = bool(pd.notna(selected_day) and selected_day.date() == owls_today)
+                if live_mode:
+                    st.caption("Live archive mode. Each capture is saved permanently in the private owner table; repeating captures through the day builds our own historical ticket/handle and sharp-money dataset.")
                 else:
-                    st.caption("The selected slate is current/future, so this refresh uses the live NCAAB splits endpoint. The dashboard also derives a sharp-money read when handle is meaningfully heavier than ticket share.")
+                    st.caption("Owls does not currently provide usable historical NCAAB public-betting splits through its archive. Past slates can only show split snapshots that we captured live and saved ourselves.")
 
-                if st.button("Refresh Owls Insight betting splits for selected slate", key="refresh_owls_splits"):
+                auto_archive = st.toggle(
+                    "Auto-archive stale live splits on Admin Studio refresh",
+                    value=True,
+                    disabled=not live_mode,
+                    help="When this Admin Studio page reruns, the site captures a fresh Owls snapshot only if our last private archive write is at least 15 minutes old. This is session-driven archival, not a background scheduler.",
+                    key="owls_auto_archive_live",
+                )
+                if live_mode and auto_archive:
                     try:
-                        run_owls_refresh(market_date, market_board, historical_mode, True, "selected")
+                        now_utc = pd.Timestamp.now(tz="UTC")
+                        latest_capture = store.latest_owner_split_capture_time(market_date)
+                        latest_ts = pd.to_datetime(latest_capture, utc=True, errors="coerce") if latest_capture else pd.NaT
+                        archive_stale = pd.isna(latest_ts) or (now_utc - latest_ts) >= pd.Timedelta(minutes=15)
+                        attempt_key = f"owls_auto_archive_attempt_{market_date}"
+                        last_attempt = pd.to_datetime(st.session_state.get(attempt_key), utc=True, errors="coerce")
+                        session_ready = pd.isna(last_attempt) or (now_utc - last_attempt) >= pd.Timedelta(minutes=15)
+                        if archive_stale and session_ready:
+                            st.session_state[attempt_key] = now_utc.isoformat()
+                            run_owls_live_refresh(market_date, market_board, True, "auto", show_preview=False, capture_trigger="auto_admin")
+                        elif pd.notna(latest_ts):
+                            age_mins = max(0, int((now_utc - latest_ts).total_seconds() // 60))
+                            st.caption(f"Private Owls archive is current — last database write was about {age_mins} minute(s) ago.")
+                    except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                        st.warning(f"Automatic Owls archive capture skipped: {exc}")
+                    except Exception as exc:
+                        st.warning(f"Automatic Owls archive capture skipped safely: {type(exc).__name__}")
+
+                if st.button("Capture live Owls betting splits now", key="refresh_owls_splits", disabled=not live_mode):
+                    try:
+                        run_owls_live_refresh(market_date, market_board, True, "manual", show_preview=True, capture_trigger="manual_admin")
                     except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
                         st.error(str(exc))
                     except Exception as exc:
-                        st.error(f"Owls Insight split refresh failed safely: {type(exc).__name__}")
+                        st.error(f"Owls Insight live split refresh failed safely: {type(exc).__name__}")
 
-                with st.expander("Historical Owls Insight backfill (MVP)", expanded=historical_mode):
-                    st.caption("Use this for a completed published slate. It calls Owls Insight /api/v1/history/public-betting with sport=ncaab and the same start/end date, then paginates through the entire college-basketball slate. It does not alter V1.1.3B or any ATS/CLV sportsbook line.")
-                    preferred_hist = datetime(2026, 2, 7).date()
-                    if historical_mode and pd.notna(selected_day):
-                        default_hist = selected_day.date()
-                    elif "2026-02-07" in market_dates:
-                        default_hist = preferred_hist
-                    else:
-                        parsed_dates = [pd.to_datetime(x, errors="coerce") for x in market_dates]
-                        past_dates = [x.date() for x in parsed_dates if pd.notna(x) and x.date() < today_utc]
-                        default_hist = max(past_dates) if past_dates else preferred_hist
-                    hist_date_value = st.date_input("Historical slate date", value=default_hist, max_value=today_utc, key="owls_history_date")
-                    hist_date = hist_date_value.strftime("%Y-%m-%d")
-                    hist_record = next((r for r in records if str(r.get("slate_date")) == hist_date), None)
-                    hist_board = pd.DataFrame()
-                    if hist_record:
-                        try:
-                            hist_board, _ = normalize_board(SupabaseSlateStore.board_frame(hist_record))
-                            st.caption(f"Published board found for {hist_date}: {len(hist_board)} games. Ready to request the Owls MVP archive.")
-                        except Exception as exc:
-                            st.warning(f"The published {hist_date} board could not be loaded: {exc}")
-                    else:
-                        st.warning(f"No published decision board is stored for {hist_date}. Publish that historical decision board first so Owls games can be mapped to the model's Game IDs.")
-                    publish_hist_public = st.checkbox("Update public plain-English crowd/sharp commentary from this backfill", value=True, key="owls_history_publish_public")
-                    if st.button("Backfill historical Owls betting splits", key="backfill_owls_history", disabled=hist_board.empty):
-                        try:
-                            run_owls_refresh(hist_date, hist_board, True, publish_hist_public, "historical")
-                        except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
-                            st.error(str(exc))
-                        except Exception as exc:
-                            st.error(f"Historical Owls Insight backfill failed safely: {type(exc).__name__}")
-
-                with st.expander("Stored owner-only raw splits", expanded=False):
+                with st.expander("Private Owls split history", expanded=False):
                     try:
                         store.check_owner_splits_access()
-                        private_rows = store.list_owner_split_snapshots(slate_date=market_date, limit=5000)
+                        private_rows = store.list_owner_split_snapshots(slate_date=market_date, limit=10000)
                         if not private_rows:
-                            st.caption("No owner-only Owls split snapshots are stored for this slate yet.")
+                            st.caption("No private Owls split snapshots are stored for this slate yet. For current slates, leave auto-archive enabled or use the capture button above.")
                         else:
                             private_frame = snapshots_frame(private_rows)
-                            private_frame = annotate_sharp_money_signals(private_frame, market_board)
-                            cols = [c for c in ["Game ID","Sportsbook Scope","Snapshot Time UTC","Market Type","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Over Ticket %","Under Ticket %","Over Money %","Under Money %","Sharp Side","Sharp Gap Pts","Sharp Strength","Sharp Signal"] if c in private_frame.columns]
-                            st.dataframe(private_frame[cols].tail(120), use_container_width=True, hide_index=True)
-                            st.download_button("Download stored owner-only split + sharp CSV", private_frame.to_csv(index=False).encode("utf-8"), file_name=f"owls_owner_splits_sharp_{market_date}.csv", mime="text/csv", key="download_owner_owls_splits")
+                            # Older rows created before v1.4.7 may not have persisted sharp columns.
+                            if "Sharp Side" not in private_frame.columns or private_frame["Sharp Side"].fillna("").astype(str).str.strip().eq("").all():
+                                private_frame = annotate_sharp_money_signals(private_frame, market_board)
+                            snap_time = pd.to_datetime(private_frame["Snapshot Time UTC"], utc=True, errors="coerce")
+                            first_snap = snap_time.min()
+                            last_snap = snap_time.max()
+                            unique_times = int(snap_time.dropna().nunique())
+                            books = sorted({str(x) for x in private_frame.get("Sportsbook Scope", pd.Series(dtype=str)).dropna().astype(str) if str(x).strip()})
+                            st.caption(f"Archive: {len(private_frame):,} market rows • {unique_times} provider snapshot time(s) • books: {', '.join(books) or '—'} • first: {first_snap.isoformat() if pd.notna(first_snap) else '—'} • latest: {last_snap.isoformat() if pd.notna(last_snap) else '—'}")
+                            cols = [c for c in ["Game ID","Sportsbook Scope","Snapshot Time UTC","Market Type","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Over Ticket %","Under Ticket %","Over Money %","Under Money %","Ticket Leader","Money Leader","Sharp Side","Sharp Gap Pts","Sharp Strength","Sharp Signal","Sharp Read","Capture Trigger"] if c in private_frame.columns]
+                            st.dataframe(private_frame[cols].tail(250), use_container_width=True, hide_index=True)
+                            st.download_button("Download private Owls split history CSV", private_frame.to_csv(index=False).encode("utf-8"), file_name=f"owls_private_split_history_{market_date}.csv", mime="text/csv", key="download_owner_owls_splits")
                     except (StorageOperationError, StorageConfigurationError) as exc:
-                        st.warning(f"Owner-only split storage is not ready. Run the v1.4.5 Supabase migration once. ({exc})")
+                        st.warning(f"Owner-only split storage is not ready. Run the v1.4.7 Supabase migration once. ({exc})")
             else:
                 st.info("OWLS_INSIGHT_API_KEY is not configured. Add the full key to Streamlit Secrets; do not paste it into the site or source code.")
 
@@ -996,7 +1001,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             store.check_owner_splits_access()
             st.success("Owls owner-only split storage: ready")
         except Exception:
-            st.warning("Owls owner-only split storage is not ready. Run supabase/market_terminal_v1_4_5.sql once in Supabase SQL Editor.")
+            st.warning("Owls owner-only split storage is not ready. Run supabase/market_terminal_v1_4_7.sql once in Supabase SQL Editor.")
         st.caption(f"Published records visible to the app: {len(records)}. Secret values are never rendered here.")
 
 @st.cache_data(ttl=30, show_spinner=False)

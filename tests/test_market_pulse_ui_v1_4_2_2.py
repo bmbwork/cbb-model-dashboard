@@ -68,4 +68,4 @@ def test_css_styles_market_pulse_children_and_mobile_stack():
 
 def test_app_version_bumped_for_market_pulse_trim_hotfix():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.6"' in app
+    assert 'APP_VERSION = "1.4.7"' in app

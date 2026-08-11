@@ -100,6 +100,10 @@ def normalize_market_import(frame: pd.DataFrame) -> pd.DataFrame:
     out["Activity Level"] = out.get("Activity Level", pd.Series("", index=out.index)).fillna("").astype(str)
     out["Provider Signals"] = out.get("Provider Signals", pd.Series("", index=out.index)).fillna("").astype(str)
     out["Book Agreement"] = out.get("Book Agreement", pd.Series("", index=out.index)).fillna("").astype(str)
+    for col in ["Ticket Leader", "Money Leader", "Sharp Side", "Sharp Strength", "Sharp Signal", "Sharp Read", "Sharp Rule Version", "Capture Trigger"]:
+        if col not in out.columns:
+            out[col] = ""
+        out[col] = out[col].fillna("").astype(str)
 
     pct_cols = [
         "Home Ticket %", "Away Ticket %", "Home Money %", "Away Money %",
@@ -113,7 +117,7 @@ def normalize_market_import(frame: pd.DataFrame) -> pd.DataFrame:
     numeric_cols = [
         "Home Line", "Away Line", "Total Line", "Opening Home Line", "Opening Away Line",
         "Opening Total", "Home Price", "Away Price", "Over Price", "Under Price",
-        "Minutes To Tip", "Ticket Count", "Book Count", "Home Spread Min", "Home Spread Max", "Book Spread Range",
+        "Minutes To Tip", "Ticket Count", "Book Count", "Home Spread Min", "Home Spread Max", "Book Spread Range", "Sharp Gap Pts",
     ]
     for col in numeric_cols:
         if col not in out.columns:
@@ -208,6 +212,15 @@ def market_records(frame: pd.DataFrame, actor: str = "") -> list[dict[str, Any]]
             "home_spread_max": None if pd.isna(row["Home Spread Max"]) else float(row["Home Spread Max"]),
             "book_spread_range": None if pd.isna(row["Book Spread Range"]) else float(row["Book Spread Range"]),
             "book_agreement": str(row["Book Agreement"] or ""),
+            "ticket_leader": str(row.get("Ticket Leader") or ""),
+            "money_leader": str(row.get("Money Leader") or ""),
+            "sharp_side": str(row.get("Sharp Side") or ""),
+            "sharp_gap_pts": None if pd.isna(pd.to_numeric(row.get("Sharp Gap Pts"), errors="coerce")) else float(pd.to_numeric(row.get("Sharp Gap Pts"), errors="coerce")),
+            "sharp_strength": str(row.get("Sharp Strength") or ""),
+            "sharp_signal": str(row.get("Sharp Signal") or "none"),
+            "sharp_read": str(row.get("Sharp Read") or ""),
+            "sharp_rule_version": str(row.get("Sharp Rule Version") or "ticket_handle_gap_v1"),
+            "capture_trigger": str(row.get("Capture Trigger") or ""),
             "raw_snapshot_hash": str(row["Raw Snapshot Hash"]),
             "published_by": actor or None,
         }
@@ -236,7 +249,11 @@ def snapshots_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
         "ticket_count":"Ticket Count", "provider_signals":"Provider Signals",
         "book_count":"Book Count", "home_spread_min":"Home Spread Min", "home_spread_max":"Home Spread Max",
         "book_spread_range":"Book Spread Range", "book_agreement":"Book Agreement",
-        "raw_snapshot_hash":"Raw Snapshot Hash",
+        "ticket_leader":"Ticket Leader", "money_leader":"Money Leader",
+        "sharp_side":"Sharp Side", "sharp_gap_pts":"Sharp Gap Pts",
+        "sharp_strength":"Sharp Strength", "sharp_signal":"Sharp Signal",
+        "sharp_read":"Sharp Read", "sharp_rule_version":"Sharp Rule Version",
+        "capture_trigger":"Capture Trigger", "raw_snapshot_hash":"Raw Snapshot Hash",
     }
     out = out.rename(columns=rename)
     return normalize_market_import(out)
