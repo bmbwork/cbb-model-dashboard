@@ -28,9 +28,24 @@ from cbb_dashboard.intelligence import (
     game_card_grid_html,
     game_card_html,
     market_context_html,
+    market_pulse_html,
     matchup_battle_html,
     team_profile_pair_html,
 )
+from cbb_dashboard.market import (
+    MarketDataError,
+    attach_market_to_board,
+    context_flags,
+    context_frame,
+    context_records,
+    market_features,
+    market_records,
+    market_research_frame,
+    normalize_context_import,
+    normalize_market_import,
+    snapshots_frame,
+)
+from cbb_dashboard.odds_api_provider import OddsApiConfig, OddsApiMarketProvider
 from cbb_dashboard.performance import (
     aggregate_metrics,
     confidence_buckets,
@@ -48,10 +63,10 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.3.4"
+APP_VERSION = "1.4.2"
 
 st.set_page_config(
-    page_title="CBB Model | Betting Intelligence",
+    page_title="CBB Model | Market Terminal",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -64,6 +79,13 @@ def secret(name: str, default: Any = None) -> Any:
         return st.secrets[name]
     except Exception:
         return default
+
+
+def optional_secret(name: str) -> str:
+    value = str(secret(name, "") or "").strip()
+    if not value or value.upper().startswith("REPLACE_ME") or value.upper().startswith("YOUR_"):
+        return ""
+    return value
 
 
 def auth_is_configured() -> bool:
@@ -395,6 +417,139 @@ def render_team_intelligence(board: pd.DataFrame) -> None:
     st.markdown('<div class="section-title">Slate game context</div>', unsafe_allow_html=True)
     st.dataframe(format_board_for_table(rows), use_container_width=True, hide_index=True)
 
+def _market_table(board: pd.DataFrame) -> pd.DataFrame:
+    research = market_research_frame(board)
+    if research.empty:
+        return research
+    keep = [
+        "Away Team", "Home Team", "Model Pick", "Model Win Probability", "Model Spread",
+        "Ticket Leader", "Ticket Leader %", "Money Leader", "Money Leader %",
+        "Line Move Toward", "Line Move Points", "Reverse Line Movement",
+        "Opening Home Spread", "Current Home Spread", "Decision Home Spread", "Closing Home Spread", "Model-Market Gap",
+        "Book Agreement", "Book Spread Range", "Ranked vs Ranked", "Conference Game", "Saturday", "Prime Time", "Market Spotlight", "Market Provider",
+    ]
+    out = research[[c for c in keep if c in research.columns]].copy()
+    if "Model Win Probability" in out.columns:
+        out["Model Win Probability"] = pd.to_numeric(out["Model Win Probability"], errors="coerce").map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
+    for c in ["Ticket Leader %", "Money Leader %"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").map(lambda x: f"{x:.0f}%" if pd.notna(x) else "—")
+    for c in ["Model Spread", "Opening Home Spread", "Current Home Spread", "Decision Home Spread", "Closing Home Spread"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").map(lambda x: f"{x:+.1f}" if pd.notna(x) else "—")
+    if "Line Move Points" in out.columns:
+        out["Line Move Points"] = pd.to_numeric(out["Line Move Points"], errors="coerce").map(lambda x: f"{x:.1f}" if pd.notna(x) else "—")
+    if "Model-Market Gap" in out.columns:
+        out["Model-Market Gap"] = pd.to_numeric(out["Model-Market Gap"], errors="coerce").map(lambda x: f"{x:+.1f} pts" if pd.notna(x) else "—")
+    return out
+
+
+def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, market_error: str | None, allow_download: bool = False) -> None:
+    st.markdown('<div class="cbb-kicker">BETTING MARKET INTELLIGENCE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Market Terminal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="firewall-note"><strong>Market firewall:</strong> sportsbook lines, optional betting splits and movement are downstream information only. They never change the V1.1.3B production prediction.</div>', unsafe_allow_html=True)
+
+    if market_error:
+        st.info("Market storage is not ready on this deployment yet. The model board remains fully available. Run the v1.4 Market Terminal Supabase migration from the setup notes to enable persistent market snapshots.")
+
+    research = market_research_frame(board)
+    split_covered = int(research["Ticket Leader"].fillna("").astype(str).ne("").sum()) if not research.empty and "Ticket Leader" in research.columns else 0
+    line_series = pd.to_numeric(research.get("Current Home Spread", pd.Series(dtype=float)), errors="coerce") if not research.empty else pd.Series(dtype=float)
+    line_covered = int(line_series.notna().sum()) if not line_series.empty else 0
+    reverse = int(research.get("Reverse Line Movement", pd.Series(False, index=research.index)).fillna(False).astype(bool).sum()) if not research.empty else 0
+    spotlight = int(research.get("Market Spotlight", pd.Series(False, index=research.index)).fillna(False).astype(bool).sum()) if not research.empty else 0
+    moved = pd.to_numeric(research.get("Line Move Points", pd.Series(dtype=float)), errors="coerce") if not research.empty else pd.Series(dtype=float)
+    biggest_move = float(moved.max()) if not moved.empty and moved.notna().any() else np.nan
+
+    cols = st.columns(5)
+    with cols[0]: metric_card("Games with lines", f"{line_covered}/{len(board)}", "sportsbook spread available")
+    with cols[1]: metric_card("Games with splits", f"{split_covered}/{len(board)}", "optional ticket / money data", "The Odds API supplies sportsbook prices, not betting splits. Ticket and money percentages appear only when a separate authorized split source is published.")
+    with cols[2]: metric_card("Market Spotlights", f"{spotlight}", "ranked conference Saturday-night games", "Games tagged when both teams are AP Top 25, the matchup is in-conference, it is Saturday, and the start falls in the evening/prime-time window.")
+    with cols[3]: metric_card("Biggest line move", fmt_num(biggest_move,1," pts"), "first saved/opening → current")
+    with cols[4]: metric_card("Snapshots saved", f"{len(market_snapshots):,}", "append-only observations")
+
+    spotlight_board = board[board.apply(lambda r: context_flags(r)["spotlight"], axis=1)].copy()
+    if not spotlight_board.empty:
+        st.markdown('<div class="section-title">Market Spotlight</div>', unsafe_allow_html=True)
+        st.caption("These are the highest-attention game environments in the current research framework: ranked vs ranked, conference, Saturday and prime time. The tag is context, not a prediction adjustment.")
+        st.markdown(game_card_grid_html(spotlight_board), unsafe_allow_html=True)
+
+    if line_covered == 0 and split_covered == 0:
+        st.markdown('<div class="section-title">Market feed</div>', unsafe_allow_html=True)
+        st.info("No sportsbook observations have been published for this slate yet. Admin can refresh The Odds API or upload an authorized market snapshot CSV. The model prediction remains unchanged.")
+    else:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="section-title">Line movers</div>', unsafe_allow_html=True)
+            line = research.copy()
+            line["Line Move Points"] = pd.to_numeric(line.get("Line Move Points"), errors="coerce")
+            line = line[line["Line Move Points"].notna()].copy()
+            if line.empty:
+                st.caption("Only one sportsbook observation is saved so far. Line movement appears after another snapshot is captured or an explicit opener is backfilled.")
+            else:
+                cols_show = [c for c in ["Away Team","Home Team","Line Move Toward","Line Move Points","Opening Home Spread","Current Home Spread","Market Provider"] if c in line.columns]
+                st.dataframe(line.sort_values("Line Move Points", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
+        with c2:
+            st.markdown('<div class="section-title">Sportsbook agreement</div>', unsafe_allow_html=True)
+            books = research.copy()
+            books["Book Spread Range"] = pd.to_numeric(books.get("Book Spread Range"), errors="coerce")
+            books = books[books["Book Spread Range"].notna()].copy()
+            if books.empty:
+                st.caption("Cross-book spread comparison is not available for this slate yet.")
+            else:
+                cols_show = [c for c in ["Away Team","Home Team","Book Agreement","Book Spread Range","Current Home Spread","Market Provider"] if c in books.columns]
+                st.dataframe(books.sort_values("Book Spread Range", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
+
+        if split_covered == 0:
+            st.markdown('<div class="section-title">Bet splits</div>', unsafe_allow_html=True)
+            st.info("The Odds API does not provide ticket % or money % betting splits. Those panels stay blank unless a separate authorized split source is imported. This prevents sportsbook-line data from being mislabeled as public-betting data.")
+        else:
+            c3, c4 = st.columns(2)
+            with c3:
+                st.markdown('<div class="section-title">Biggest public sides</div>', unsafe_allow_html=True)
+                public = research[research["Ticket Leader"].fillna("").astype(str).ne("")].copy()
+                public["Ticket Leader %"] = pd.to_numeric(public["Ticket Leader %"], errors="coerce")
+                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %"] if c in public.columns]
+                st.dataframe(public.sort_values("Ticket Leader %", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
+            with c4:
+                st.markdown('<div class="section-title">Money vs tickets</div>', unsafe_allow_html=True)
+                divergence = research.copy()
+                divergence["Ticket Leader %"] = pd.to_numeric(divergence.get("Ticket Leader %"), errors="coerce")
+                divergence["Money Leader %"] = pd.to_numeric(divergence.get("Money Leader %"), errors="coerce")
+                divergence["Split Difference"] = (divergence["Money Leader %"] - divergence["Ticket Leader %"]).abs()
+                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Money Leader","Split Difference","Reverse Line Movement"] if c in divergence.columns]
+                st.dataframe(divergence.sort_values("Split Difference", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
+
+            st.markdown('<div class="section-title">Reverse movement watch</div>', unsafe_allow_html=True)
+            rlm = research[research.get("Reverse Line Movement", pd.Series(False, index=research.index)).fillna(False).astype(bool)].copy()
+            if rlm.empty:
+                st.caption("No reverse-movement pattern currently meets the display threshold.")
+            else:
+                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Ticket Leader %","Line Move Toward","Line Move Points"] if c in rlm.columns]
+                st.dataframe(rlm[cols_show], use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">Model vs market</div>', unsafe_allow_html=True)
+    st.caption("Largest differences between the production model spread and the saved decision-time sportsbook spread. Positive numbers mean the sportsbook offered the model-picked team more points / a shorter favorite price than the model projection.")
+    gap = research.copy()
+    gap["Model-Market Gap"] = pd.to_numeric(gap.get("Model-Market Gap"), errors="coerce")
+    gap = gap[gap["Model-Market Gap"].notna()].copy()
+    if gap.empty:
+        st.caption("No decision-time sportsbook spread is stored for this slate yet.")
+    else:
+        gap["Absolute Gap"] = gap["Model-Market Gap"].abs()
+        gap_cols = [c for c in ["Away Team","Home Team","Model Pick","Model Spread","Decision Line For Model Pick","Model-Market Gap","Market Provider"] if c in gap.columns]
+        st.dataframe(gap.sort_values("Absolute Gap", ascending=False)[gap_cols].head(10), use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">All games — model + market</div>', unsafe_allow_html=True)
+    st.dataframe(_market_table(board), use_container_width=True, hide_index=True)
+
+    with st.expander("Research dataset: ranked conference prime-time hypothesis", expanded=False):
+        st.markdown("The site is collecting the context needed to test whether ranked in-conference Saturday-evening games finish closer than otherwise comparable games **after controlling for the model's expected margin and team-strength gap**. This is research-only; the production model is not adjusted by this tag.")
+        research_cols = [c for c in ["Slate Date","Game ID","Away Team","Home Team","Model Pick","Model Win Probability","Model Spread","Home Rank","Away Rank","Ranked vs Ranked","Conference Game","Saturday","Prime Time","Market Spotlight","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %","Line Move Toward","Line Move Points","Reverse Line Movement","Book Agreement","Book Spread Range","Decision Home Spread","Closing Home Spread","Model-Market Gap","Actual Home Margin","Absolute Final Margin","Market Provider"] if c in research.columns]
+        st.dataframe(research[research_cols], use_container_width=True, hide_index=True)
+        if allow_download:
+            st.download_button("Download research CSV", research.to_csv(index=False).encode("utf-8"), file_name="cbb_market_research_export.csv", mime="text/csv")
+
 def render_performance_lab(records: list[dict[str, Any]]) -> None:
     st.markdown('<div class="cbb-kicker">HOW THE MODEL HAS PERFORMED</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Performance Lab</div>', unsafe_allow_html=True)
@@ -477,6 +632,27 @@ The site is built to answer four simple questions: **Who does the model like? By
 **Spread** — graded only against a saved pregame or taken sportsbook spread. The closing line is tracked separately and never substituted for the line that was actually available.
         """
     )
+    st.markdown('<div class="section-title">How to read the Market Terminal</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+**Bets** — the percentage of individual tickets on each side. This is the clearest view of where the public is leaning. The Odds API does not provide this field; it appears only when a separate authorized split source is published.
+
+**Money** — the percentage of total stake/handle on each side. A large difference from ticket percentage can indicate that larger wagers are concentrated differently, but the site does not label bettors as “sharp.” The Odds API does not provide this field; it appears only when a separate authorized split source is published.
+
+**Line move** — how the sportsbook spread changed from the first saved/opening number to the latest saved number. With live Odds API polling, the first observation becomes our tracked opening unless an explicit historical opener is saved.
+
+**Reverse movement** — most tickets favor one team while the spread moves toward the other team. It is a market-disagreement flag, not an automatic bet signal.
+
+**Market Spotlight** — a research context tag for ranked-vs-ranked, in-conference, Saturday prime-time games. The model is not adjusted because of this tag.
+
+**Decision line** — the pregame sportsbook spread closest to the model run / decision point. This is the line used for ATS grading when available.
+
+**Closing line** — the last valid pregame line. It is stored separately to measure closing-line value and is never substituted for the decision line when grading ATS.
+
+**Model vs market gap** — the difference between V1.1.3B's projected spread and the decision-time sportsbook spread. It is descriptive until enough historical market data exists to validate a betting rule.
+        """
+    )
+
     st.markdown('<div class="section-title">Why some technical metrics are hidden</div>', unsafe_allow_html=True)
     st.markdown(
         """
@@ -487,7 +663,7 @@ The public cards intentionally hide development terminology, raw model field nam
 def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[dict[str, Any]]) -> None:
     st.markdown('<div class="cbb-kicker">OWNER WORKFLOW</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Publishing Studio</div>', unsafe_allow_html=True)
-    st.markdown('<div class="intel-callout"><strong>Admin-only workflow.</strong> Uploads remain private to this session until you explicitly publish. Public visitors never receive file-upload controls.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="intel-callout"><strong>Admin-only workflow.</strong> Uploads and market refreshes remain private to this session until you explicitly publish. Public visitors never receive file-upload or refresh controls.</div>', unsafe_allow_html=True)
     if store is None:
         st.error("Supabase is not configured. Add the database secrets before publishing.")
         return
@@ -495,7 +671,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
         st.error("This authenticated account is not authorized to publish.")
         return
 
-    board_tab, grade_tab, health_tab = st.tabs(["Publish Board", "Publish Grading", "Storage Health"])
+    board_tab, grade_tab, market_tab, health_tab = st.tabs(["Publish Board", "Publish Grading", "Market Data", "Storage Health"])
     actor = audit_actor(access.email)
 
     with board_tab:
@@ -540,26 +716,173 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             except Exception as exc:
                 st.error(f"Grading publication failed safely: {type(exc).__name__}")
 
+    with market_tab:
+        st.markdown("#### Refresh / publish market intelligence")
+        st.caption("Market data is downstream only. It cannot change the V1.1.3B prediction. Decision-time lines grade ATS; closing lines are retained separately for CLV.")
+        if not records:
+            st.info("Publish at least one decision board before adding market data.")
+        else:
+            market_dates = [str(r.get("slate_date")) for r in records if r.get("slate_date")]
+            market_date = st.selectbox("Published slate for market data", market_dates, key="admin_market_date")
+            market_record = next((r for r in records if str(r.get("slate_date")) == market_date), None)
+            market_board = pd.DataFrame()
+            if market_record:
+                try:
+                    market_board, _ = normalize_board(SupabaseSlateStore.board_frame(market_record))
+                except Exception as exc:
+                    st.error(f"Selected board could not be loaded: {exc}")
+
+            odds_api_key = optional_secret("THE_ODDS_API_KEY")
+            odds_regions = str(secret("THE_ODDS_API_REGIONS", "us") or "us")
+            odds_bookmakers = str(secret("THE_ODDS_API_BOOKMAKERS", "") or "")
+            odds_reference = str(secret("THE_ODDS_API_REFERENCE_BOOKMAKER", "draftkings") or "draftkings")
+
+            if odds_api_key and not market_board.empty:
+                st.success("The Odds API is configured as the primary sportsbook-line source.")
+                st.caption("It supplies real sportsbook prices, spreads, totals and cross-book comparison. It does not supply ticket % or money % betting splits; those remain a separate optional import/source.")
+                if st.button("Refresh The Odds API market lines", type="primary", key="refresh_odds_api_market"):
+                    try:
+                        store.check_market_access(admin=True)
+                        cfg = OddsApiConfig(
+                            api_key=odds_api_key,
+                            regions=odds_regions,
+                            bookmakers=odds_bookmakers,
+                            reference_bookmaker=odds_reference,
+                        )
+                        with st.spinner("Refreshing sportsbook spreads, moneylines, totals and cross-book line agreement..."):
+                            snapshots, context, health = OddsApiMarketProvider(cfg).refresh(market_board)
+                            snapshot_count = store.publish_market_records(market_records(snapshots, actor)) if not snapshots.empty else 0
+                        st.success(f"The Odds API refresh complete: {health.get('mapped_games',0)}/{health.get('board_games',0)} games mapped • {snapshot_count} snapshot rows.")
+                        remaining = str(health.get("requests_remaining") or "").strip()
+                        used = str(health.get("requests_used") or "").strip()
+                        last = str(health.get("requests_last") or "").strip()
+                        if remaining or used or last:
+                            st.caption(f"API credits — last request: {last or '—'} • used this period: {used or '—'} • remaining: {remaining or '—'}")
+                        if health.get("mapped_games", 0) < health.get("board_games", 0):
+                            st.warning("Some published games could not be matched to The Odds API event list. No market line was fabricated for unmatched games.")
+                        if health.get("reference_fallback_games"):
+                            st.caption(f"The configured reference sportsbook was unavailable for {len(health['reference_fallback_games'])} game(s); an available named sportsbook was used and preserved in the source label.")
+                        st.cache_data.clear()
+                    except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(f"The Odds API refresh failed safely: {type(exc).__name__}")
+
+                with st.expander("Historical Odds API snapshot (paid plans)", expanded=False):
+                    st.caption("Historical featured-market requests cost 10× the normal per-market credit rate. Use this only when you intentionally want to backfill an old slate. One bulk snapshot can cover the full NCAAB slate at that timestamp.")
+                    hist_stamp = st.text_input("Historical snapshot time (UTC / ISO 8601)", placeholder="2026-03-19T23:00:00Z", key="odds_api_hist_stamp")
+                    hist_role = st.selectbox("How should this snapshot be used?", ["observed", "open", "decision", "close"], key="odds_api_hist_role")
+                    if st.button("Backfill historical Odds API snapshot", key="refresh_odds_api_historical"):
+                        try:
+                            store.check_market_access(admin=True)
+                            cfg = OddsApiConfig(
+                                api_key=odds_api_key,
+                                regions=odds_regions,
+                                bookmakers=odds_bookmakers,
+                                reference_bookmaker=odds_reference,
+                            )
+                            with st.spinner("Fetching the historical sportsbook snapshot..."):
+                                snapshots, _, health = OddsApiMarketProvider(cfg).refresh(market_board, historical_at=hist_stamp, snapshot_role=hist_role)
+                                snapshot_count = store.publish_market_records(market_records(snapshots, actor)) if not snapshots.empty else 0
+                            st.success(f"Historical snapshot published: {health.get('mapped_games',0)}/{health.get('board_games',0)} games mapped • {snapshot_count} rows • role={hist_role}.")
+                            last = str(health.get("requests_last") or "").strip()
+                            remaining = str(health.get("requests_remaining") or "").strip()
+                            if last or remaining:
+                                st.caption(f"Historical API credits — last request: {last or '—'} • remaining: {remaining or '—'}")
+                            st.cache_data.clear()
+                        except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                            st.error(str(exc))
+                        except Exception as exc:
+                            st.error(f"Historical Odds API refresh failed safely: {type(exc).__name__}")
+            else:
+                st.info("The Odds API is the primary sportsbook-line source, but THE_ODDS_API_KEY is not configured. Add it in Streamlit Secrets or use the manual imports below.")
+
+            st.markdown("##### Manual market snapshot import")
+            st.caption("Use this for authorized betting-split data, a historical odds extract, or another source you are permitted to store and publish. The Odds API connector handles sportsbook lines automatically; ticket % and money % require a separate authorized source/import. One row = one market snapshot at one timestamp.")
+            market_upload = st.file_uploader("Market snapshot CSV", type=["csv"], key="admin_market_snapshot_upload")
+            if market_upload is not None:
+                try:
+                    market_candidate = normalize_market_import(read_csv(market_upload))
+                    if market_date and not market_candidate["Slate Date"].astype(str).eq(market_date).all():
+                        raise MarketDataError(f"Every row must belong to the selected slate {market_date}.")
+                    st.success(f"Validated {len(market_candidate):,} market snapshot rows.")
+                    preview = [c for c in ["Game ID","Snapshot Time UTC","Market Type","Provider","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Opening Home Line","Home Line","Snapshot Role"] if c in market_candidate.columns]
+                    st.dataframe(market_candidate[preview].head(40), use_container_width=True, hide_index=True)
+                    confirm_market = st.checkbox("I am authorized to store/publish this market data.", key="confirm_market_publish")
+                    if st.button("Publish market snapshots", disabled=not confirm_market, key="publish_market_snapshots"):
+                        store.check_market_access(admin=True)
+                        count = store.publish_market_records(market_records(market_candidate, actor))
+                        st.success(f"Published {count:,} market snapshot rows.")
+                        st.cache_data.clear()
+                except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Market import failed safely: {type(exc).__name__}")
+
+            st.markdown("##### Manual game-context import")
+            st.caption("Optional historical backfill for AP ranks, conference-game flags and local prime-time context. This is especially useful when a current rankings endpoint cannot safely reconstruct an old date.")
+            context_upload = st.file_uploader("Game context CSV", type=["csv"], key="admin_context_upload")
+            if context_upload is not None:
+                try:
+                    context_candidate = normalize_context_import(read_csv(context_upload))
+                    if market_date and not context_candidate["Slate Date"].astype(str).eq(market_date).all():
+                        raise MarketDataError(f"Every row must belong to the selected slate {market_date}.")
+                    st.success(f"Validated {len(context_candidate):,} game-context rows.")
+                    st.dataframe(context_candidate.head(40), use_container_width=True, hide_index=True)
+                    confirm_context = st.checkbox("I reviewed this game-context data.", key="confirm_context_publish")
+                    if st.button("Publish game context", disabled=not confirm_context, key="publish_game_context"):
+                        store.check_market_access(admin=True)
+                        count = store.publish_context_records(context_records(context_candidate, actor))
+                        st.success(f"Published {count:,} game-context rows.")
+                        st.cache_data.clear()
+                except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Game-context import failed safely: {type(exc).__name__}")
+
     with health_tab:
         st.markdown("#### Storage access")
         try:
             store.check_access(admin=False)
-            st.success("Public read path: ready")
+            st.success("Published slate read path: ready")
         except Exception as exc:
-            st.error(f"Public read path: {exc}")
+            st.error(f"Published slate read path: {exc}")
         try:
             store.check_access(admin=True)
-            st.success("Admin write client: ready")
+            st.success("Published slate admin write path: ready")
         except Exception as exc:
-            st.error(f"Admin write path: {exc}")
+            st.error(f"Published slate admin write path: {exc}")
+        try:
+            store.check_market_access(admin=False)
+            st.success("Market/context public read path: ready")
+        except Exception:
+            st.warning("Market/context tables are not ready yet. Run supabase/market_terminal_v1_4.sql once in Supabase SQL Editor.")
+        try:
+            store.check_market_access(admin=True)
+            st.success("Market/context admin write path: ready")
+        except Exception:
+            st.warning("Market/context admin write path unavailable until the v1.4 migration is applied.")
         st.caption(f"Published records visible to the app: {len(records)}. Secret values are never rendered here.")
-
 
 @st.cache_data(ttl=30, show_spinner=False)
 def cached_record_list(_store: SupabaseSlateStore | None) -> list[dict[str, Any]]:
     if _store is None:
         return []
     return _store.list_records(limit=120)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_market_list(_store: SupabaseSlateStore | None, slate_date: str) -> list[dict[str, Any]]:
+    if _store is None or not slate_date:
+        return []
+    return _store.list_market_snapshots(slate_date=slate_date, limit=5000)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_context_list(_store: SupabaseSlateStore | None, slate_date: str) -> list[dict[str, Any]]:
+    if _store is None or not slate_date:
+        return []
+    return _store.list_game_context(slate_date=slate_date, limit=5000)
 
 
 store, store_error = make_store()
@@ -590,7 +913,7 @@ with st.sidebar:
     else:
         selected_date = None
 
-    public_pages = ["Today's Board", "Matchup Explorer", "Team Intelligence", "Performance Lab", "Model Guide"]
+    public_pages = ["Today's Board", "Market Terminal", "Matchup Explorer", "Team Intelligence", "Performance Lab", "Model Guide"]
     pages = public_pages + (["Admin Studio"] if access.authorized else [])
     page = st.radio("Navigate", pages, label_visibility="collapsed")
 
@@ -620,12 +943,22 @@ if selected_date and records:
 
 board = pd.DataFrame()
 report = None
+market_snapshots = pd.DataFrame()
+market_context = pd.DataFrame()
+market_error: str | None = None
 if record:
     try:
         board, report = normalize_board(SupabaseSlateStore.board_frame(record))
         grading = SupabaseSlateStore.grading_frame(record)
         if grading is not None and not grading.empty:
             board = attach_grading(board, grading)
+        if store is not None:
+            try:
+                market_snapshots = snapshots_frame(cached_market_list(store, str(record.get("slate_date") or "")))
+                market_context = context_frame(cached_context_list(store, str(record.get("slate_date") or "")))
+                board = attach_market_to_board(board, market_snapshots, market_context)
+            except Exception as exc:
+                market_error = str(exc)
     except Exception as exc:
         st.error(f"The published board could not be validated: {exc}")
 
@@ -639,6 +972,8 @@ else:
     render_header(report, record)
     if page == "Today's Board":
         render_board(board, report)
+    elif page == "Market Terminal":
+        render_market_terminal(board, market_snapshots, market_error, allow_download=access.authorized)
     elif page == "Matchup Explorer":
         render_matchup_explorer(board)
     elif page == "Team Intelligence":

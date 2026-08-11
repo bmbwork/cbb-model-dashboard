@@ -19,7 +19,7 @@ def test_uploaders_exist_only_in_admin_studio():
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "file_uploader":
             uploader_lines.append(node.lineno)
-    assert len(uploader_lines) == 2
+    assert len(uploader_lines) == 4
     assert all(lo <= line <= hi for line in uploader_lines)
 
 

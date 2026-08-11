@@ -35,6 +35,8 @@ def sha256_frame(frame: pd.DataFrame) -> str:
 
 class SupabaseSlateStore:
     TABLE = "cbb_slates"
+    MARKET_TABLE = "cbb_market_snapshots"
+    CONTEXT_TABLE = "cbb_game_context"
 
     def __init__(self, config: StoreConfig):
         self.config = config
@@ -64,6 +66,69 @@ class SupabaseSlateStore:
             client.table(self.TABLE).select("slate_date").limit(1).execute()
         except Exception as exc:
             raise StorageOperationError(f"Supabase table `{self.TABLE}` is not ready or not accessible: {type(exc).__name__}") from exc
+
+    def check_market_access(self, admin: bool = False) -> None:
+        client = self._admin_client() if admin else self._public
+        for table in [self.MARKET_TABLE, self.CONTEXT_TABLE]:
+            try:
+                client.table(table).select("slate_date").limit(1).execute()
+            except Exception as exc:
+                raise StorageOperationError(f"Supabase market table `{table}` is not ready or not accessible: {type(exc).__name__}") from exc
+
+    def list_market_snapshots(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
+        try:
+            query = self._public.table(self.MARKET_TABLE).select("*")
+            if slate_date:
+                query = query.eq("slate_date", slate_date)
+            resp = query.order("snapshot_time_utc", desc=False).limit(int(limit)).execute()
+            return [dict(x) for x in self._data(resp)]
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read market snapshots: {type(exc).__name__}") from exc
+
+    def list_game_context(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
+        try:
+            query = self._public.table(self.CONTEXT_TABLE).select("*")
+            if slate_date:
+                query = query.eq("slate_date", slate_date)
+            resp = query.order("slate_date", desc=True).limit(int(limit)).execute()
+            return [dict(x) for x in self._data(resp)]
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read game context: {type(exc).__name__}") from exc
+
+    def publish_market_records(self, records: list[dict[str, Any]]) -> int:
+        if not records:
+            return 0
+        client = self._admin_client()
+        now = datetime.now(timezone.utc).isoformat()
+        payload = []
+        for record in records:
+            row = dict(record)
+            row.setdefault("created_at", now)
+            row["updated_at"] = now
+            payload.append(row)
+        try:
+            resp = client.table(self.MARKET_TABLE).upsert(payload, on_conflict="raw_snapshot_hash").execute()
+            data = self._data(resp)
+            return len(data) if data else len(payload)
+        except Exception as exc:
+            raise StorageOperationError(f"Market snapshot publish failed: {type(exc).__name__}") from exc
+
+    def publish_context_records(self, records: list[dict[str, Any]]) -> int:
+        if not records:
+            return 0
+        client = self._admin_client()
+        now = datetime.now(timezone.utc).isoformat()
+        payload = []
+        for record in records:
+            row = dict(record)
+            row["updated_at"] = now
+            payload.append(row)
+        try:
+            resp = client.table(self.CONTEXT_TABLE).upsert(payload, on_conflict="slate_date,game_id").execute()
+            data = self._data(resp)
+            return len(data) if data else len(payload)
+        except Exception as exc:
+            raise StorageOperationError(f"Game-context publish failed: {type(exc).__name__}") from exc
 
     @staticmethod
     def _publish_sort_key(record: dict[str, Any]) -> tuple[int, str, int]:

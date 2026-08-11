@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .ui import esc, fmt_num, fmt_odds, fmt_pct, fmt_spread
+from .market import context_flags, market_features
 
 
 DECISION_HOME_SPREAD_COLUMNS = (
@@ -462,6 +463,97 @@ def evidence_html(row: pd.Series) -> str:
     """)
 
 
+
+
+def _pct_text(value: float) -> str:
+    return f"{value:.0f}%" if np.isfinite(value) else "—"
+
+
+def game_context_chips_html(row: pd.Series) -> str:
+    flags = context_flags(row)
+    chips: list[str] = []
+    hr, ar = flags.get("home_rank"), flags.get("away_rank")
+    if flags["ranked_vs_ranked"]:
+        chips.append(f'<span class="chip spotlight">Ranked matchup #{ar} vs #{hr}</span>')
+    if flags["conference_game"]:
+        chips.append('<span class="chip conference">Conference game</span>')
+    if flags["saturday"] and flags["prime_time"]:
+        chips.append('<span class="chip primetime">Saturday night</span>')
+    elif flags["prime_time"]:
+        chips.append('<span class="chip primetime">Prime-time window</span>')
+    if flags["spotlight"]:
+        chips.append('<span class="chip spotlight strong">Market Spotlight</span>')
+    return "".join(chips)
+
+
+def market_pulse_html(row: pd.Series) -> str:
+    f = market_features(row)
+    provider = str(row.get("_market_source_label") or "")
+    latest = str(row.get("_market_latest_snapshot_utc") or "")
+    has_split = bool(f["ticket_team"] or f["money_team"])
+    opening = _num(row, "_market_opening_home_spread")
+    current = _num(row, "_market_current_home_spread")
+    home = str(row.get("Home Team") or "Home")
+    if not has_split and not (np.isfinite(opening) or np.isfinite(current)):
+        return compact_html('<div class="market-pulse empty"><div class="market-pulse-title">MARKET PULSE</div><div class="market-empty">Sportsbook lines and betting splits are not available for this game yet.</div></div>')
+
+    ticket = f"{f['ticket_team']} {_pct_text(f['ticket_pct'])}" if f["ticket_team"] else "Not provided"
+    money = f"{f['money_team']} {_pct_text(f['money_pct'])}" if f["money_team"] else "Not provided"
+    if np.isfinite(opening) and np.isfinite(current) and abs(opening - current) >= 0.05:
+        line = f"{home} {opening:+.1f} → {current:+.1f}"
+        line_note = "first saved/opening → current"
+    elif np.isfinite(current):
+        line = f"{home} {current:+.1f}"
+        line_note = "current line · first tracked snapshot" if np.isfinite(opening) else "current line"
+    else:
+        line = "—"
+        line_note = "sportsbook spread"
+
+    reads: list[str] = []
+    if f["public_heavy"] and f["ticket_team"]:
+        reads.append(f"Heavy public support on {f['ticket_team']}.")
+    if f["money_team"] and f["ticket_team"] and f["money_team"] != f["ticket_team"]:
+        reads.append(f"Bets and money disagree: tickets favor {f['ticket_team']}, while money favors {f['money_team']}.")
+    elif f["money_team"] and f["ticket_team"] and f["money_team"] == f["ticket_team"]:
+        reads.append(f"Tickets and money both favor {f['ticket_team']}.")
+    if f["line_move_team"] and np.isfinite(f["line_move_points"]):
+        reads.append(f"The line has moved {f['line_move_points']:.1f} points toward {f['line_move_team']}.")
+    if f["reverse_line_movement"]:
+        reads.append("The line is moving against the side receiving most tickets — a market disagreement worth watching.")
+    book_agreement = str(row.get("_market_book_agreement") or "").lower()
+    book_range = _num(row, "_market_book_spread_range")
+    if book_agreement == "wide" and np.isfinite(book_range):
+        reads.append(f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread.")
+    elif book_agreement == "tight" and np.isfinite(book_range):
+        reads.append("Sportsbooks are tightly aligned on the spread.")
+    if not reads:
+        reads.append("Sportsbook line data is available; betting splits are not provided by this source." if not has_split else "Market signals are mixed or still developing.")
+    read_text = " ".join(reads[:3])
+    source = provider or "published market source"
+    stamp = f" · latest {latest[:16].replace('T',' ')} UTC" if latest else ""
+    ticket_count = _num(row, "_market_ticket_count")
+    activity = str(row.get("_market_activity_level") or "").strip()
+    sample_note = ""
+    if np.isfinite(ticket_count):
+        sample_note = f" · {int(ticket_count):,} tracked bets"
+        if activity:
+            sample_note += f" · {activity} activity"
+        if ticket_count < 250:
+            reads.append("The split sample is still small, so percentages can move sharply.")
+            read_text = " ".join(reads[:3])
+    css = "reverse" if f["reverse_line_movement"] else "live"
+    html = (
+        f'<div class="market-pulse {css}">'
+        f'<div class="market-pulse-head"><span>MARKET PULSE</span><em>{esc(source)}{esc(sample_note)}{esc(stamp)}</em></div>'
+        '<div class="market-pulse-grid">'
+        f'<div><span>BETS</span><strong>{esc(ticket)}</strong><small>{"share of tickets" if has_split else "separate splits source"}</small></div>'
+        f'<div><span>MONEY</span><strong>{esc(money)}</strong><small>{"share of money" if has_split else "separate splits source"}</small></div>'
+        f'<div><span>LINE</span><strong>{esc(line)}</strong><small>{esc(line_note)}</small></div>'
+        '</div>'
+        f'<p>{esc(read_text)}</p></div>'
+    )
+    return compact_html(html)
+
 def market_context_html(row: pd.Series) -> str:
     decision, decision_source = decision_home_spread(row)
     close, _ = closing_home_spread(row)
@@ -526,7 +618,7 @@ def dossier_html(row: pd.Series) -> str:
     return compact_html(f"""
       <details class="intel-dossier">
         <summary><span>Why this pick?</span><span>Reasons / risks / team comparison / sportsbook context ＋</span></summary>
-        <div class="dossier-body">{evidence_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
+        <div class="dossier-body">{evidence_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_pulse_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
       </details>
     """)
 
@@ -556,6 +648,9 @@ def game_card_html(row: pd.Series) -> str:
         chips.append('<span class="chip orange">Neutral court</span>')
     chips.append(f'<span class="chip {"green" if verified else "gold"}">{"Player status verified" if verified else "Player status not verified"}</span>')
     chips.append(f'<span class="chip champion">{esc(model_role(row))}</span>')
+    context_chips = game_context_chips_html(row)
+    if context_chips:
+        chips.append(context_chips)
     decision, _ = decision_home_spread(row)
     selected_decision = selected_team_spread(row, decision)
     gap = model_market_gap(row)
@@ -578,6 +673,7 @@ def game_card_html(row: pd.Series) -> str:
         </div>
         <div class="scoreboard">{team_row(away, row.get('Projected Away Score'))}{team_row(home, row.get('Projected Home Score'))}</div>
         <div class="chip-row">{''.join(chips)}</div>
+        {market_pulse_html(row)}
         {betting_snapshot_html(row)}
         {dossier_html(row)}
       </div>

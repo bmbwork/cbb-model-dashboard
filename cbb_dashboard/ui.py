@@ -260,6 +260,22 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
 .battle-card strong { display:block; color:#f8fffe; font-size:.83rem; margin-top:2px; }
 .battle-card em { display:block; color:#74645e; font-size:.52rem; font-style:normal; margin-top:2px; line-height:1.35; }
 
+
+.market-pulse { border:1px solid rgba(251,191,36,.20); background:linear-gradient(90deg,rgba(251,191,36,.055),rgba(45,212,191,.025)); border-radius:12px; padding:10px 11px; margin-top:10px; }
+.market-pulse-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
+.market-pulse-head strong { color:#fff2c7; font-size:.70rem; letter-spacing:.08em; }
+.market-pulse-head span { color:#8f7d74; font-size:.55rem; }
+.market-pulse-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.market-pulse-stat { border:1px solid rgba(231,203,188,.10); background:rgba(255,255,255,.018); border-radius:9px; padding:7px 8px; }
+.market-pulse-stat span { display:block; color:#8d7a72; font-size:.52rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+.market-pulse-stat strong { display:block; color:#f9f4ee; font-size:.78rem; margin-top:2px; }
+.market-pulse-read { color:#b6a49b; font-size:.60rem; line-height:1.45; margin-top:7px; }
+.market-pulse.reverse { border-color:rgba(251,191,36,.38); background:linear-gradient(90deg,rgba(251,191,36,.10),rgba(251,113,133,.035)); }
+.chip.spotlight { color:#ffe28a; border-color:rgba(251,191,36,.42); background:rgba(251,191,36,.10); box-shadow:0 0 0 1px rgba(251,191,36,.04) inset; }
+.chip.conference { color:#cdd6ff; border-color:rgba(129,140,248,.26); background:rgba(129,140,248,.055); }
+.chip.primetime { color:#ffb9d0; border-color:rgba(244,114,182,.25); background:rgba(244,114,182,.055); }
+@media (max-width:700px) { .market-pulse-grid { grid-template-columns:1fr 1fr 1fr; } }
+
 .market-context { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:5px 10px; align-items:center; border-radius:12px; padding:10px 11px; margin-top:10px; border:1px solid rgba(148,163,184,.12); background:rgba(255,255,255,.015); }
 .market-context > div:first-child span { display:block; color:#9f8c83; font-size:.54rem; font-weight:900; letter-spacing:.08em; }
 .market-context > div:first-child strong { display:block; color:#fff3d4; font-size:.86rem; margin-top:2px; }

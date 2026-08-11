@@ -1,45 +1,43 @@
-# CBB Model Dashboard v1.3 — Betting Intelligence
+# CBB Model Dashboard v1.4.2 — Market Terminal / The Odds API
 
-Streamlit presentation layer for the CBB V1.1.3B production champion. Public users remain read-only. The website displays published pregame forecasts, optional downstream market context, and official grading; it never reruns, retrains, rescales, or alters the independent prediction engine.
+Streamlit presentation and downstream market-intelligence layer for the frozen CBB V1.1.3B production champion. Public users remain read-only. Market information never enters the model forecast.
 
-## v1.3 highlights
+## V1.4.2 highlights
 
-- Bettor-first game cards: model side, win probability, model line, model fair ML, projected score/total, pace, uncertainty band and data quality.
-- Removes old challenger/baseline/calibration plumbing from bettor-facing cards and the public decision table.
-- Rich **Game Intelligence Dossiers** with:
-  - why the model likes the pick;
-  - what can beat the pick;
-  - two full team profile cards;
-  - adjusted offense, defense, net efficiency and D-I SOS;
-  - optional true pregame PPG / PPG allowed;
-  - matchup battlegrounds;
-  - availability, uncertainty and data quality;
-  - optional downstream market context.
-- Expanded **Team Intelligence** page with a team dossier hero, current matchup profile, opponent profile and matchup battleground.
-- Upgraded result treatment: green W banner for a winning ML or ATS grade and a stronger gold W sweep banner when both hit.
-- Correct betting-line accounting:
-  - ATS grades against a stored decision-time/taken spread or explicit grader result;
-  - closing spread is stored separately for CLV reference;
-  - closing spread is never substituted as the ATS bet line;
-  - model fair spread is never treated as a sportsbook line.
-- Market/model gap is display-only and never creates an automatic BET, LEAN, PASS or +EV label.
-- Performance Laboratory now presents a production evidence view rather than public challenger comparisons.
-- Historical 1.1.x published slates remain backward-compatible.
+- **The Odds API** is the primary automated sportsbook-line provider.
+- NCAA men's basketball current moneyline, spreads and totals.
+- Reference sportsbook line with explicit source provenance.
+- Cross-book disagreement and spread-range diagnostics.
+- Append-only snapshots for line movement.
+- Explicit decision line for ATS and separate closing line for CLV.
+- Paid-plan historical backfill with user-selected snapshot role.
+- API-credit telemetry in Admin Studio.
+- Market Terminal works correctly with sportsbook lines even when ticket/money splits are unavailable.
+- Optional manual/provider-agnostic betting-split imports remain supported.
+- Ranked/conference/Saturday/prime-time research context remains separate from V1.1.3B.
 
-## PPG / PPG allowed
+## Data boundary
 
-The UI supports these fields when the production board exports them. If true pregame PPG / PPG allowed are absent, the site displays `—`. It never back-solves them from projected scores or adjusted efficiency.
+The Odds API supplies sportsbook odds, not public betting splits. V1.4.2 never invents bet percentages from line movement. Ticket % and money % appear only when an authorized split source is stored separately.
 
 ## Database
 
-No Supabase migration is required for v1.3. Existing `cbb_slates` JSON storage, authentication and RLS remain compatible. Optional decision/closing market fields can travel inside the existing published JSON payload.
+Run the additive/idempotent migration:
+
+`supabase/market_terminal_v1_4_2.sql`
+
+It creates/updates `cbb_market_snapshots` and `cbb_game_context` and leaves `cbb_slates` intact.
+
+## Secrets
+
+Use `STREAMLIT_SECRETS_TEMPLATE.toml`. The only market credential required for automated lines is `THE_ODDS_API_KEY`. Never commit a real key.
 
 ## Deploy
 
-From the v1.3 patch folder:
+From the v1.4.2 patch folder:
 
 ```bash
-bash upgrade_github_v1_3.sh
+bash upgrade_github_v1_4_2.sh
 ```
 
-The script targets `~/Desktop/cbb-model-dashboard`, requires that folder to already be a Git repository, pulls `main`, installs the patch, compiles Python, runs pytest when available, commits and pushes to GitHub. Streamlit Community Cloud should redeploy automatically.
+The script targets `~/Desktop/cbb-model-dashboard`, requires a clean existing Git clone, pulls `main`, installs the release, validates it, commits and pushes to GitHub.
