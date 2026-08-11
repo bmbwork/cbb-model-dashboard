@@ -63,7 +63,7 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.2.2"
+APP_VERSION = "1.4.2.3"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",

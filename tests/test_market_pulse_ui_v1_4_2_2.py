@@ -36,7 +36,10 @@ def test_odds_api_only_market_pulse_uses_line_movement_and_consensus_not_empty_s
 def test_market_pulse_stat_cards_have_explicit_classes_for_stable_layout():
     html = market_pulse_html(_row())
     assert html.count('class="market-pulse-stat"') == 3
-    assert 'class="market-pulse-read"' in html
+    # Tight consensus is already communicated by the consensus card, so the
+    # narrative footer should not repeat the same information.
+    assert 'class="market-pulse-read"' not in html
+    assert "Sportsbooks are tightly aligned on the spread." not in html
 
 
 def test_market_pulse_with_real_splits_still_shows_bets_money_and_line():
@@ -63,6 +66,6 @@ def test_css_styles_market_pulse_children_and_mobile_stack():
     assert "grid-template-columns:1fr" in css
 
 
-def test_app_version_bumped_for_card_layout_hotfix():
+def test_app_version_bumped_for_market_pulse_trim_hotfix():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.2.2"' in app
+    assert 'APP_VERSION = "1.4.2.3"' in app

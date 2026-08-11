@@ -542,10 +542,6 @@ def market_pulse_html(row: pd.Series) -> str:
         reads.append("The line is moving against the side receiving most tickets -- a market disagreement worth watching.")
     if book_agreement == "wide" and np.isfinite(book_range):
         reads.append(f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread.")
-    elif book_agreement == "tight" and np.isfinite(book_range):
-        reads.append("Sportsbooks are tightly aligned on the spread.")
-    if not reads:
-        reads.append("Sportsbook line data is available. Betting splits require a separate source." if not has_split else "Market signals are mixed or still developing.")
 
     source = provider or "Published market source"
     stamp = f"Snapshot {latest[11:16]} UTC" if len(latest) >= 16 else ""
@@ -562,6 +558,7 @@ def market_pulse_html(row: pd.Series) -> str:
         source_bits.append(stamp)
     source_text = " · ".join(source_bits)
     read_text = " ".join(reads[:3])
+    read_html = f'<div class="market-pulse-read">{esc(read_text)}</div>' if read_text else ""
     css = "reverse" if f["reverse_line_movement"] else "live"
 
     if has_split:
@@ -583,7 +580,7 @@ def market_pulse_html(row: pd.Series) -> str:
         f'<div class="market-pulse {css}">'
         f'<div class="market-pulse-head"><span>MARKET PULSE</span><em>{esc(source_text)}</em></div>'
         f'<div class="market-pulse-grid">{stats}</div>'
-        f'<p class="market-pulse-read">{esc(read_text)}</p></div>'
+        f'{read_html}</div>'
     )
     return compact_html(html)
 
