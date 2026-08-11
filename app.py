@@ -29,7 +29,6 @@ from cbb_dashboard.intelligence import (
     game_card_html,
     market_context_html,
     market_pulse_html,
-    market_interpretation_text,
     matchup_battle_html,
     team_profile_pair_html,
 )
@@ -63,9 +62,20 @@ from cbb_dashboard.storage import (
 )
 from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
+# Import-compatibility guard for rolling Streamlit deploys. v1.4.3 introduced
+# market_interpretation_text in cbb_dashboard.intelligence. If Streamlit briefly
+# starts the new app.py against a stale cached intelligence module, the whole app
+# should still boot rather than crash at import time. The installer also ships
+# the matching intelligence.py, so this fallback is only a safety net.
+try:
+    from cbb_dashboard.intelligence import market_interpretation_text
+except ImportError:
+    def market_interpretation_text(row: pd.Series) -> str:
+        return "Market split interpretation will appear after the deployment finishes loading the updated intelligence module."
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.4.3.1"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",
