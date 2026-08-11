@@ -37,6 +37,7 @@ class SupabaseSlateStore:
     TABLE = "cbb_slates"
     MARKET_TABLE = "cbb_market_snapshots"
     CONTEXT_TABLE = "cbb_game_context"
+    OWNER_SPLITS_TABLE = "cbb_owner_betting_splits"
 
     def __init__(self, config: StoreConfig):
         self.config = config
@@ -74,6 +75,81 @@ class SupabaseSlateStore:
                 client.table(table).select("slate_date").limit(1).execute()
             except Exception as exc:
                 raise StorageOperationError(f"Supabase market table `{table}` is not ready or not accessible: {type(exc).__name__}") from exc
+
+    def check_owner_splits_access(self) -> None:
+        client = self._admin_client()
+        try:
+            client.table(self.OWNER_SPLITS_TABLE).select("slate_date").limit(1).execute()
+        except Exception as exc:
+            raise StorageOperationError(f"Supabase owner-only splits table `{self.OWNER_SPLITS_TABLE}` is not ready: {type(exc).__name__}") from exc
+
+    def list_owner_split_snapshots(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
+        client = self._admin_client()
+        try:
+            query = client.table(self.OWNER_SPLITS_TABLE).select("*")
+            if slate_date:
+                query = query.eq("slate_date", slate_date)
+            resp = query.order("snapshot_time_utc", desc=False).limit(int(limit)).execute()
+            return [dict(x) for x in self._data(resp)]
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read owner-only betting splits: {type(exc).__name__}") from exc
+
+    def publish_owner_split_records(self, records: list[dict[str, Any]]) -> int:
+        if not records:
+            return 0
+        client = self._admin_client()
+        now = datetime.now(timezone.utc).isoformat()
+        payload = []
+        for record in records:
+            row = dict(record)
+            row.setdefault("created_at", now)
+            row["updated_at"] = now
+            payload.append(row)
+        try:
+            resp = client.table(self.OWNER_SPLITS_TABLE).upsert(payload, on_conflict="raw_snapshot_hash").execute()
+            data = self._data(resp)
+            return len(data) if data else len(payload)
+        except Exception as exc:
+            raise StorageOperationError(f"Owner-only betting split publish failed: {type(exc).__name__}") from exc
+
+    def publish_public_betting_notes(self, records: list[dict[str, Any]], actor: str = "") -> int:
+        if not records:
+            return 0
+        client = self._admin_client()
+        count = 0
+        now = datetime.now(timezone.utc).isoformat()
+        for record in records:
+            slate_date = str(record.get("slate_date") or "")
+            game_id = str(record.get("game_id") or "")
+            if not slate_date or not game_id:
+                continue
+            fields = {
+                "betting_public_side": record.get("betting_public_side"),
+                "betting_money_side": record.get("betting_money_side"),
+                "betting_signal": record.get("betting_signal"),
+                "betting_label": record.get("betting_label"),
+                "betting_note": record.get("betting_note"),
+                "betting_source": record.get("betting_source"),
+                "betting_books": record.get("betting_books"),
+                "betting_updated_at": record.get("betting_updated_at") or now,
+                "betting_sharp_side": record.get("betting_sharp_side"),
+                "betting_sharp_signal": record.get("betting_sharp_signal"),
+                "betting_sharp_confidence": record.get("betting_sharp_confidence"),
+                "betting_sharp_note": record.get("betting_sharp_note"),
+                "betting_sharp_books": record.get("betting_sharp_books"),
+                "published_by": actor or None,
+                "updated_at": now,
+            }
+            try:
+                existing = client.table(self.CONTEXT_TABLE).select("id").eq("slate_date", slate_date).eq("game_id", game_id).limit(1).execute()
+                if self._data(existing):
+                    client.table(self.CONTEXT_TABLE).update(fields).eq("slate_date", slate_date).eq("game_id", game_id).execute()
+                else:
+                    client.table(self.CONTEXT_TABLE).insert({"slate_date": slate_date, "game_id": game_id, "provider": "owlsinsight", "context_source": "Owls Insight derived commentary", **fields}).execute()
+                count += 1
+            except Exception as exc:
+                raise StorageOperationError(f"Public betting-note publish failed for {game_id}: {type(exc).__name__}") from exc
+        return count
 
     def list_market_snapshots(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
         try:
@@ -119,8 +195,18 @@ class SupabaseSlateStore:
         client = self._admin_client()
         now = datetime.now(timezone.utc).isoformat()
         payload = []
+        betting_fields = {
+            "betting_public_side", "betting_money_side", "betting_signal", "betting_label",
+            "betting_note", "betting_source", "betting_books", "betting_updated_at",
+        }
         for record in records:
             row = dict(record)
+            # Manual/context imports historically did not contain betting fields.
+            # Omit blank derived fields so a later context update cannot erase the
+            # owner-published Owls qualitative commentary.
+            for key in betting_fields:
+                if row.get(key) in (None, ""):
+                    row.pop(key, None)
             row["updated_at"] = now
             payload.append(row)
         try:

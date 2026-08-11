@@ -68,7 +68,9 @@ def test_action_ticket_count_persists_into_records_and_market_pulse(board_df):
     assert records[0]["provider_signals"] == "Big Money"
     out = attach_market_to_board(board, snap)
     html = market_pulse_html(out.iloc[0])
-    assert "1,842 tracked bets" in html
+    assert "1,842 tracked bets" not in html
+    assert "PUBLIC BETS" not in html
+    assert "PUBLIC MONEY" not in html
     assert "Action Network" in html
 
 

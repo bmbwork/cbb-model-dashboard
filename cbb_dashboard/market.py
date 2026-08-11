@@ -261,7 +261,11 @@ def normalize_context_import(frame: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = False
         out[col] = out[col].map(lambda x: str(x).strip().lower() in {"true","1","yes","y"} if not isinstance(x,(bool,np.bool_)) else bool(x))
-    for col in ["Home Conference", "Away Conference", "Provider", "Provider Game ID", "Context Source", "Local Start"]:
+    for col in ["Home Conference", "Away Conference", "Provider", "Provider Game ID", "Context Source", "Local Start",
+                "Betting Public Side", "Betting Money Side", "Betting Signal", "Betting Label",
+                "Betting Note", "Betting Source", "Betting Books", "Betting Updated At",
+                "Betting Sharp Side", "Betting Sharp Signal", "Betting Sharp Confidence",
+                "Betting Sharp Note", "Betting Sharp Books"]:
         if col not in out.columns:
             out[col] = ""
         out[col] = out[col].fillna("").astype(str)
@@ -287,6 +291,19 @@ def context_records(frame: pd.DataFrame, actor: str = "") -> list[dict[str, Any]
             "neutral_site": bool(row["Neutral Site"]),
             "local_start": str(row["Local Start"] or ""),
             "context_source": str(row["Context Source"] or row["Provider"] or "manual"),
+            "betting_public_side": str(row.get("Betting Public Side") or "") or None,
+            "betting_money_side": str(row.get("Betting Money Side") or "") or None,
+            "betting_signal": str(row.get("Betting Signal") or "") or None,
+            "betting_label": str(row.get("Betting Label") or "") or None,
+            "betting_note": str(row.get("Betting Note") or "") or None,
+            "betting_source": str(row.get("Betting Source") or "") or None,
+            "betting_books": str(row.get("Betting Books") or "") or None,
+            "betting_updated_at": str(row.get("Betting Updated At") or "") or None,
+            "betting_sharp_side": str(row.get("Betting Sharp Side") or "") or None,
+            "betting_sharp_signal": str(row.get("Betting Sharp Signal") or "") or None,
+            "betting_sharp_confidence": str(row.get("Betting Sharp Confidence") or "") or None,
+            "betting_sharp_note": str(row.get("Betting Sharp Note") or "") or None,
+            "betting_sharp_books": str(row.get("Betting Sharp Books") or "") or None,
             "published_by": actor or None,
         })
     return records
@@ -301,6 +318,12 @@ def context_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
         "home_conference":"Home Conference", "away_conference":"Away Conference",
         "conference_game":"Conference Game", "saturday":"Saturday", "prime_time":"Prime Time",
         "neutral_site":"Neutral Site", "local_start":"Local Start", "context_source":"Context Source",
+        "betting_public_side":"Betting Public Side", "betting_money_side":"Betting Money Side",
+        "betting_signal":"Betting Signal", "betting_label":"Betting Label", "betting_note":"Betting Note",
+        "betting_source":"Betting Source", "betting_books":"Betting Books", "betting_updated_at":"Betting Updated At",
+        "betting_sharp_side":"Betting Sharp Side", "betting_sharp_signal":"Betting Sharp Signal",
+        "betting_sharp_confidence":"Betting Sharp Confidence", "betting_sharp_note":"Betting Sharp Note",
+        "betting_sharp_books":"Betting Sharp Books",
     })
     return normalize_context_import(out)
 
@@ -557,13 +580,13 @@ def attach_market_to_board(board: pd.DataFrame, snapshots: pd.DataFrame, context
 
     # Use market snapshots as the ATS/CLV source only when the board/grader did not
     # already publish an explicit pregame line. This keeps grading provenance clear.
-    decision = pd.to_numeric(out.get("_market_decision_home_spread"), errors="coerce")
-    existing_decision = pd.to_numeric(out.get("_market_home_spread"), errors="coerce")
+    decision = pd.to_numeric(out.get("_market_decision_home_spread", pd.Series(np.nan, index=out.index)), errors="coerce")
+    existing_decision = pd.to_numeric(out.get("_market_home_spread", pd.Series(np.nan, index=out.index)), errors="coerce")
     use_decision = existing_decision.isna() & decision.notna()
     out.loc[use_decision, "_market_home_spread"] = decision.loc[use_decision]
     out.loc[use_decision, "_spread_source"] = out.loc[use_decision, "_market_source_label"].fillna("market snapshot") + " · decision-time spread"
-    close = pd.to_numeric(out.get("_market_closing_home_spread"), errors="coerce")
-    existing_close = pd.to_numeric(out.get("_closing_home_spread"), errors="coerce")
+    close = pd.to_numeric(out.get("_market_closing_home_spread", pd.Series(np.nan, index=out.index)), errors="coerce")
+    existing_close = pd.to_numeric(out.get("_closing_home_spread", pd.Series(np.nan, index=out.index)), errors="coerce")
     use_close = existing_close.isna() & close.notna()
     out.loc[use_close, "_closing_home_spread"] = close.loc[use_close]
     out.loc[use_close, "_closing_source"] = out.loc[use_close, "_market_source_label"].fillna("market snapshot") + " · closing spread"
@@ -587,7 +610,9 @@ def attach_market_to_board(board: pd.DataFrame, snapshots: pd.DataFrame, context
     if context is not None and not context.empty:
         ctx = normalize_context_import(context)
         ctx["__gid"] = ctx["Game ID"].astype(str)
-        keep = [c for c in ["__gid", "Home Rank", "Away Rank", "Home Conference", "Away Conference", "Conference Game", "Saturday", "Prime Time", "Local Start", "Context Source", "Provider Game ID"] if c in ctx.columns]
+        keep = [c for c in ["__gid", "Home Rank", "Away Rank", "Home Conference", "Away Conference", "Conference Game", "Saturday", "Prime Time", "Local Start", "Context Source", "Provider Game ID",
+                            "Betting Public Side", "Betting Money Side", "Betting Signal", "Betting Label", "Betting Note", "Betting Source", "Betting Books", "Betting Updated At",
+                            "Betting Sharp Side", "Betting Sharp Signal", "Betting Sharp Confidence", "Betting Sharp Note", "Betting Sharp Books"] if c in ctx.columns]
         ctx = ctx[keep].drop_duplicates("__gid", keep="last")
         out["__gid"] = out["Game ID"].astype(str)
         out = out.merge(ctx, on="__gid", how="left", suffixes=("", "_context")).drop(columns=["__gid"])

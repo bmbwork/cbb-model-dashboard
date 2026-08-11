@@ -277,6 +277,38 @@ def signal_readout(row: pd.Series) -> tuple[list[str], list[str]]:
     if not _bool(row.get("Availability Verified", False)):
         risks.append("Player availability has not been fully verified, so late lineup news could change the matchup.")
 
+    # Owner-authorized market context. Only non-numeric, derived commentary is
+    # stored on the public row; raw Owls ticket/handle percentages remain private.
+    betting_signal = str(row.get("Betting Signal") or "").strip()
+    public_side = str(row.get("Betting Public Side") or "").strip()
+    money_side = str(row.get("Betting Money Side") or "").strip()
+    sharp_side = str(row.get("Betting Sharp Side") or "").strip()
+    sharp_signal = str(row.get("Betting Sharp Signal") or "").strip()
+    sharp_confidence = str(row.get("Betting Sharp Confidence") or "").strip()
+
+    if sharp_side and sharp_signal in {"sharp_consensus", "sharp_possible"}:
+        if pick == sharp_side:
+            qualifier = "across multiple sportsbooks" if sharp_signal == "sharp_consensus" else "in the available split data"
+            positives.append(f"A sharp-money signal {qualifier} also favors {pick}: the dollar share is heavier than the ticket share on that side. This is market context, not a model input.")
+        elif opponent == sharp_side:
+            qualifier = "strong" if sharp_confidence in {"strong", "very strong"} else "possible"
+            risks.append(f"A {qualifier} sharp-money signal favors {opponent}, which disagrees with the model pick. That does not invalidate the model, but it is meaningful market risk.")
+    elif sharp_signal == "sharp_mixed":
+        risks.append("Sharp-money reads disagree across sportsbooks, so there is no clean professional-money confirmation for either side.")
+    elif betting_signal == "money_disagrees" and public_side and money_side:
+        if pick == money_side:
+            positives.append(f"Betting-market context also leans toward {pick}: the money side favors the model pick even though more individual bets are on {public_side}.")
+        elif pick == public_side:
+            risks.append(f"Betting-market context is mixed: more individual bets are on {pick}, but the money side favors {money_side}.")
+
+    if betting_signal == "public_heavy" and public_side:
+        if public_side == pick:
+            risks.append(f"{pick} is a heavily popular betting side. The model may still be right, but a crowded side can come with a less attractive sportsbook price.")
+        elif public_side == opponent:
+            risks.append(f"The betting crowd is heavily backing {opponent}, so the model pick is running against a strongly popular market side.")
+    elif betting_signal == "public_lean" and public_side and public_side == opponent:
+        risks.append(f"The betting crowd leans toward {opponent}, creating a modest model-versus-public disagreement.")
+
     if not positives:
         positives.append("No single factor dominates. The pick comes from the combined team-strength, matchup, game-speed and simulation picture.")
     if not risks:
@@ -562,18 +594,57 @@ def market_interpretation_text(row: pd.Series) -> str:
     return " ".join(sentences[:3])
 
 
+def betting_crowd_read(row: pd.Series) -> str:
+    """Public, non-numeric betting-split interpretation.
+
+    Raw Owls Insight percentages remain owner-only. This function uses only
+    qualitative public/sharp-money fields persisted in public game context.
+    """
+    note = str(row.get("Betting Note") or "").strip()
+    if not note:
+        return ""
+    public_side = str(row.get("Betting Public Side") or "").strip()
+    money_side = str(row.get("Betting Money Side") or "").strip()
+    f = market_features(row)
+    move_team = str(f.get("line_move_team") or "").strip()
+    move_pts = f.get("line_move_points")
+    extras: list[str] = []
+    if move_team and np.isfinite(move_pts) and float(move_pts) >= 0.5:
+        if money_side and move_team == money_side and public_side and money_side != public_side:
+            extras.append(f"The line is moving toward {move_team}, the same side favored by the money rather than the larger number of bets.")
+        elif public_side and move_team != public_side:
+            extras.append(f"The sportsbook line is moving toward {move_team}, against the more popular betting side. That disagreement is worth watching.")
+        elif public_side and move_team == public_side:
+            extras.append(f"The line is also moving toward {move_team}, so the market price is following the betting crowd.")
+    return " ".join([note, *extras]).strip()
+
+
+def betting_market_note_html(row: pd.Series) -> str:
+    read = betting_crowd_read(row)
+    if not read:
+        return ""
+    label = str(row.get("Betting Label") or "Betting crowd check")
+    html = (
+        f'<div class="intel-callout market-note">'
+        f'<strong>{esc(label)}</strong>'
+        f'<span>{esc(read)}</span>'
+        f'<small>Betting-market context only. These splits do not change the production model prediction.</small>'
+        f'</div>'
+    )
+    return compact_html(html)
+
+
 def market_pulse_html(row: pd.Series) -> str:
     f = market_features(row)
     line_provider = str(row.get("_market_source_label") or "")
     line_latest = str(row.get("_market_latest_snapshot_utc") or "")
-    split_provider = str(row.get("_market_split_source_label") or "")
-    split_latest = str(row.get("_market_split_latest_snapshot_utc") or "")
-    has_split = bool(f["ticket_team"] or f["money_team"])
+    betting_label = str(row.get("Betting Label") or "").strip()
+    betting_read = betting_crowd_read(row)
     opening = _num(row, "_market_opening_home_spread")
     current = _num(row, "_market_current_home_spread")
     home = str(row.get("Home Team") or "Home")
-    if not has_split and not (np.isfinite(opening) or np.isfinite(current)):
-        return compact_html('<div class="market-pulse empty"><div class="market-pulse-head"><span>MARKET PULSE</span></div><div class="market-empty">Sportsbook lines and public betting splits are not available for this game yet.</div></div>')
+    if not betting_read and not (np.isfinite(opening) or np.isfinite(current)):
+        return compact_html('<div class="market-pulse empty"><div class="market-pulse-head"><span>MARKET PULSE</span></div><div class="market-empty">Sportsbook lines and betting-crowd context are not available for this game yet.</div></div>')
 
     if np.isfinite(current):
         line_value = f"{home} {current:+.1f}"
@@ -607,38 +678,26 @@ def market_pulse_html(row: pd.Series) -> str:
         agreement_note_parts.append(f"{book_range:.1f} pt range")
     agreement_note = " · ".join(agreement_note_parts) if agreement_note_parts else "cross-book spread view"
 
-    source_bits: list[str] = []
+    source_text = "Published market data"
     if line_provider:
         stamp = f"{line_latest[11:16]} UTC" if len(line_latest) >= 16 else ""
-        source_bits.append(f"Lines: {line_provider}" + (f" · {stamp}" if stamp else ""))
-    if split_provider:
-        stamp = f"{split_latest[11:16]} UTC" if len(split_latest) >= 16 else ""
-        split_bits = [f"Splits: {split_provider}"]
-        ticket_count = _num(row, "_market_ticket_count")
-        activity = str(row.get("_market_activity_level") or "").strip()
-        if np.isfinite(ticket_count):
-            split_bits.append(f"{int(ticket_count):,} tracked bets")
-            if activity:
-                split_bits.append(f"{activity} activity")
-        if stamp:
-            split_bits.append(stamp)
-        source_bits.append(" · ".join(split_bits))
-    source_text = " | ".join(source_bits) or "Published market data"
+        source_text = f"Lines: {line_provider}" + (f" · {stamp}" if stamp else "")
+    if betting_read:
+        source_text += " | Betting flow: owner-authorized crowd/sharp read"
 
-    read_text = market_interpretation_text(row)
+    read_text = betting_read
     if book_agreement == "wide" and np.isfinite(book_range):
         extra = f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread."
         read_text = f"{read_text} {extra}".strip()
     read_html = f'<div class="market-pulse-read"><strong>WHAT IT MEANS</strong><span>{esc(read_text)}</span></div>' if read_text else ""
     css = "reverse" if f["reverse_line_movement"] else "live"
 
-    if has_split:
-        ticket = f"{f['ticket_team']} {_pct_text(f['ticket_pct'])}" if f["ticket_team"] else "--"
-        money = f"{f['money_team']} {_pct_text(f['money_pct'])}" if f["money_team"] else "--"
+    if betting_read:
+        crowd_value = betting_label or "Betting split available"
         stats = (
-            f'<div class="market-pulse-stat"><span>PUBLIC BETS</span><strong>{esc(ticket)}</strong><small>share of betting tickets</small></div>'
-            f'<div class="market-pulse-stat"><span>PUBLIC MONEY</span><strong>{esc(money)}</strong><small>share of dollars wagered</small></div>'
             f'<div class="market-pulse-stat"><span>SPORTSBOOK LINE</span><strong>{esc(line_value)}</strong><small>current reference line</small></div>'
+            f'<div class="market-pulse-stat"><span>BETTING CROWD</span><strong>{esc(crowd_value)}</strong><small>plain-English split read</small></div>'
+            f'<div class="market-pulse-stat"><span>LINE MOVEMENT</span><strong>{esc(move_value)}</strong><small>{esc(move_note)}</small></div>'
         )
     else:
         stats = (
@@ -720,7 +779,7 @@ def dossier_html(row: pd.Series) -> str:
     return compact_html(f"""
       <details class="intel-dossier">
         <summary><span>Why this pick?</span><span>Reasons / risks / team comparison / sportsbook context ＋</span></summary>
-        <div class="dossier-body">{evidence_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_pulse_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
+        <div class="dossier-body">{evidence_html(row)}{betting_market_note_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_pulse_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
       </details>
     """)
 

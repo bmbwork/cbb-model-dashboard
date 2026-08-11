@@ -1,45 +1,32 @@
-# CBB Model Dashboard v1.4.3 — Market Terminal / The Odds API + SportsDataIO
+# CBB Model Dashboard v1.4.5 — Owls Insight Sharp-Money Layer
 
-Streamlit presentation and downstream market-intelligence layer for the frozen CBB V1.1.3B production champion. Public users remain read-only. Market information never enters the model forecast.
+V1.4.5 extends the v1.4.4 Owls Insight integration with an explicit sharp-money interpretation layer while keeping the production model market-blind.
 
-## V1.4.3 highlights
+## Data roles
 
-- **The Odds API** remains the sportsbook-line provider.
-- **SportsDataIO** is the dedicated public bet % / public money % provider.
-- NCAA men's basketball current moneyline, spreads and totals.
-- Reference sportsbook line with explicit source provenance.
-- Cross-book disagreement and spread-range diagnostics.
-- Append-only snapshots for line movement.
-- Explicit decision line for ATS and separate closing line for CLV.
-- Paid-plan historical backfill with user-selected snapshot role.
-- API-credit telemetry in Admin Studio.
-- Plain-English bettor interpretation explains crowded public sides, money/ticket disagreement and reverse movement.
-- SportsDataIO trial mode is preview-only; production mode publishes verified splits.
-- Optional manual/provider-agnostic betting-split imports remain supported.
-- Ranked/conference/Saturday/prime-time research context remains separate from V1.1.3B.
+- **The Odds API** — sportsbook lines, movement, decision line for ATS, closing line for CLV.
+- **Owls Insight** — owner-only DraftKings/Circa ticket and handle percentages.
+- **Sharp-money read** — a downstream interpretation of Owls ticket-vs-handle divergence. It is not a production-model feature and it does not prove bettor identity.
 
-## Data boundary
+## Sharp-money heuristic
 
-The Odds API supplies sportsbook prices. SportsDataIO supplies public betting splits. V1.4.3 keeps those sources separate and never lets split observations become ATS/closing sportsbook lines. Market data remains downstream of V1.1.3B.
+For each side, the dashboard calculates `money share - ticket share`.
 
-## Database
+- under 10 points: no sharp-money flag
+- 10–14.9 points: possible signal
+- 15–24.9 points: strong signal
+- 25+ points: very strong signal
+- when the ticket leader and money leader are opposite, the money side is upgraded to at least strong
+- agreement across multiple books is labeled a cross-book sharp-money signal
+- conflicting book signals are labeled mixed
 
-If the v1.4.2 Market Terminal schema has not already been applied, run the additive/idempotent migration:
+These are dashboard interpretation thresholds, not Owls Insight provider-defined cutoffs and not predictive model coefficients.
 
-`supabase/market_terminal_v1_4_2.sql`
+## Install
 
-It creates/updates `cbb_market_snapshots` and `cbb_game_context` and leaves `cbb_slates` intact.
+1. Run `supabase/market_terminal_v1_4_5.sql` once in Supabase SQL Editor.
+2. Keep `OWLS_INSIGHT_API_KEY = "owlsinsight_..."` in Streamlit Secrets above `[auth]`.
+3. Run `upgrade_github_v1_4_5.sh` from the extracted patch folder.
+4. After Streamlit redeploys, sign in and use **Admin Studio → Market Data → Refresh Owls Insight betting splits + sharp money**.
 
-## Secrets
-
-Use `STREAMLIT_SECRETS_TEMPLATE.toml`. Use `THE_ODDS_API_KEY` for sportsbook lines and `SPORTSDATAIO_API_KEY` for public splits. Never commit real keys. SportsDataIO defaults to `trial` preview mode.
-
-## Deploy
-
-From the v1.4.3 patch folder:
-
-```bash
-bash upgrade_github_v1_4_3.sh
-```
-
-The script targets `~/Desktop/cbb-model-dashboard`, requires a clean existing Git clone, pulls `main`, installs the release, validates it, commits and pushes to GitHub.
+Raw ticket/handle percentages and row-level sharp diagnostics remain owner-only. Public cards receive only qualitative crowd/money/sharp commentary authorized for display.

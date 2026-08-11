@@ -78,10 +78,10 @@ def test_line_and_split_providers_merge_without_overwriting_each_other(board_df)
     assert row["_market_source_label"] == "The Odds API · DraftKings"
     assert row["_market_split_source_label"] == "SportsDataIO betting splits"
     html = market_pulse_html(row)
-    assert "PUBLIC BETS" in html
-    assert "PUBLIC MONEY" in html
+    assert "PUBLIC BETS" not in html
+    assert "PUBLIC MONEY" not in html
     assert "Lines: The Odds API" in html
-    assert "Splits: SportsDataIO" in html
+    assert "Splits: SportsDataIO" not in html
 
 
 def test_plain_english_market_read_explains_money_ticket_disagreement(board_df):

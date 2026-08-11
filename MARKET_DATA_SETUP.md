@@ -1,68 +1,51 @@
-# CBB Market Terminal v1.4.3 — The Odds API + SportsDataIO
+# CBB Market Terminal v1.4.5 — Owls Insight Sharp Money
 
-## Provider split
+## Streamlit secret
 
-V1.4.3 uses two downstream market providers with different jobs:
-
-- **The Odds API** supplies actual sportsbook lines, prices, cross-book spread ranges and line movement.
-- **SportsDataIO** supplies public bet percentage and public money percentage.
-
-Neither provider changes the V1.1.3B forecast.
-
-## Streamlit Secrets
-
-Keep all market secrets above the `[auth]` section:
+Keep the existing key at top level, above `[auth]`:
 
 ```toml
-THE_ODDS_API_KEY = "..."
-THE_ODDS_API_REGIONS = "us"
-THE_ODDS_API_BOOKMAKERS = ""
-THE_ODDS_API_REFERENCE_BOOKMAKER = "draftkings"
-
-SPORTSDATAIO_API_KEY = "..."
-SPORTSDATAIO_SPLITS_MODE = "trial"
+OWLS_INSIGHT_API_KEY = "owlsinsight_YOUR_FULL_KEY"
 ```
 
-`SPORTSDATAIO_SPLITS_MODE` values:
+The key is sent only in the `Authorization: Bearer` request header. Never place it in source code, Supabase, URLs, or public HTML.
 
-- `trial` — fetch and preview in Admin Studio only; nothing is published publicly.
-- `production` — publish SportsDataIO split history to the Market Terminal.
+## Supabase
 
-Use production only after SportsDataIO confirms the split percentages in the account are production/unscrambled and licensed for the intended display.
+Run `supabase/market_terminal_v1_4_5.sql` once. It is cumulative and safe if the v1.4.4 migration was already run.
 
-## SportsDataIO refresh
+The migration keeps `cbb_owner_betting_splits` private and adds only qualitative sharp-money fields to public `cbb_game_context`:
 
-Admin Studio -> Market Data -> **Refresh SportsDataIO public betting splits**.
+- `betting_sharp_side`
+- `betting_sharp_signal`
+- `betting_sharp_confidence`
+- `betting_sharp_note`
+- `betting_sharp_books`
 
-The connector:
+No raw ticket or handle percentage is added to the public context table.
 
-1. calls `GameOddsByDate/{date}` to map the published CBB slate to SportsDataIO GameIDs;
-2. calls `BettingSplitsByGameId/{gameId}` for each mapped game;
-3. uses `BettingMetadata` as an enum-label fallback;
-4. stores spread, moneyline and total split history as `observed` snapshots;
-5. never writes sportsbook lines from SportsDataIO into the ATS/CLV line fields.
+## Admin workflow
 
-## Historical slates
+**Admin Studio → Market Data → Refresh Owls Insight betting splits + sharp money**
 
-The split-by-game endpoint returns split movement/history for the game, so the same SportsDataIO refresh button can populate historical split observations when the account entitlement exposes those games.
+The owner preview shows the raw ticket/handle percentages plus:
 
-## ATS / CLV provenance
+- Sharp Side
+- Sharp Gap Pts
+- Sharp Strength
+- Sharp Signal
 
-- `observed` = market observation only.
-- `open` = explicit opener.
-- `decision` = the saved pregame line eligible for ATS grading.
-- `close` = closing line used separately for CLV.
+`Sharp Gap Pts` is `money share - ticket share` on the flagged side. This is a market-flow diagnostic, not a prediction.
 
-V1.4.3 does not infer decision or closing lines from ordinary observations.
+## Public wording
 
-## Public interpretation
+The public site may say things such as:
 
-The Market Pulse translates the feed into plain English:
+- “Public heavily on Duke.”
+- “Bets and money disagree.”
+- “Possible sharp money: North Carolina.”
+- “Sharp-money signals from multiple sportsbooks point toward North Carolina.”
+- “The model agrees with the sharp-money side.”
+- “The model pick conflicts with a strong sharp-money signal.”
 
-- Public Bets = share of betting tickets.
-- Public Money = share of dollars wagered.
-- If tickets and money disagree, the card explains which team has more bets and which team has more dollars.
-- If the line moves against the popular side, the card explains that the market is not following the crowd.
-- The copy may note when the model agrees with the money side or disagrees with both the public and the money.
-
-The site does not label these patterns “sharp money” and does not automatically call them profitable bets.
+Raw percentages remain owner-only.

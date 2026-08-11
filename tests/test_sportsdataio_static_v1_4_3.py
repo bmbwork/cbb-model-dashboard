@@ -3,22 +3,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_sportsdataio_secret_is_top_level_before_auth():
+def test_owls_secret_is_top_level_before_auth():
     text = (ROOT / "STREAMLIT_SECRETS_TEMPLATE.toml").read_text()
-    assert "SPORTSDATAIO_API_KEY" in text
-    assert text.index("SPORTSDATAIO_API_KEY") < text.index("\n[auth]\n")
-    assert 'SPORTSDATAIO_SPLITS_MODE = "trial"' in text
+    assert "OWLS_INSIGHT_API_KEY" in text
+    assert text.index("OWLS_INSIGHT_API_KEY") < text.index("[auth]")
+    assert "SPORTSDATAIO_API_KEY" not in text
 
 
-def test_admin_exposes_sportsdataio_refresh_and_trial_guard():
+def test_admin_exposes_owls_refresh_and_owner_guard():
     app = (ROOT / "app.py").read_text()
-    assert "Refresh SportsDataIO public betting splits" in app
-    assert "preview-only" in app
-    assert "Nothing was published publicly" in app
-    assert 'APP_VERSION = "1.4.3"' in app
+    assert "Refresh Owls Insight betting splits" in app
+    assert "check_owner_splits_access" in app
+    assert "publish_owner_split_records" in app
+    assert "derive_public_betting_notes" in app
 
 
-def test_release_does_not_replace_the_odds_api_line_provider():
+def test_release_keeps_the_odds_api_as_line_provider():
     app = (ROOT / "app.py").read_text()
     assert "Refresh The Odds API market lines" in app
-    assert "SportsDataIO public betting splits" in app
+    assert "Owls Insight betting splits" in app
+    assert "SPORTSBOOK LINE" not in app or "SPORTSBOOK LINE" in (ROOT / "cbb_dashboard" / "intelligence.py").read_text()
