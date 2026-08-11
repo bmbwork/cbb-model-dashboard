@@ -29,6 +29,7 @@ from cbb_dashboard.intelligence import (
     game_card_html,
     market_context_html,
     market_pulse_html,
+    market_interpretation_text,
     matchup_battle_html,
     team_profile_pair_html,
 )
@@ -46,6 +47,7 @@ from cbb_dashboard.market import (
     snapshots_frame,
 )
 from cbb_dashboard.odds_api_provider import OddsApiConfig, OddsApiMarketProvider
+from cbb_dashboard.sportsdataio_provider import SportsDataIOConfig, SportsDataIOSplitsProvider
 from cbb_dashboard.performance import (
     aggregate_metrics,
     confidence_buckets,
@@ -63,7 +65,7 @@ from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.2.3"
+APP_VERSION = "1.4.3"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",
@@ -426,7 +428,7 @@ def _market_table(board: pd.DataFrame) -> pd.DataFrame:
         "Ticket Leader", "Ticket Leader %", "Money Leader", "Money Leader %",
         "Line Move Toward", "Line Move Points", "Reverse Line Movement",
         "Opening Home Spread", "Current Home Spread", "Decision Home Spread", "Closing Home Spread", "Model-Market Gap",
-        "Book Agreement", "Book Spread Range", "Ranked vs Ranked", "Conference Game", "Saturday", "Prime Time", "Market Spotlight", "Market Provider",
+        "Book Agreement", "Book Spread Range", "Ranked vs Ranked", "Conference Game", "Saturday", "Prime Time", "Market Spotlight", "Market Provider", "Split Provider",
     ]
     out = research[[c for c in keep if c in research.columns]].copy()
     if "Model Win Probability" in out.columns:
@@ -453,6 +455,9 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
         st.info("Market storage is not ready on this deployment yet. The model board remains fully available. Run the v1.4 Market Terminal Supabase migration from the setup notes to enable persistent market snapshots.")
 
     research = market_research_frame(board)
+    if not research.empty:
+        read_map = {str(r.get("Game ID")): market_interpretation_text(r) for _, r in board.iterrows()}
+        research["Plain-English Market Read"] = research["Game ID"].astype(str).map(read_map).fillna("")
     split_covered = int(research["Ticket Leader"].fillna("").astype(str).ne("").sum()) if not research.empty and "Ticket Leader" in research.columns else 0
     line_series = pd.to_numeric(research.get("Current Home Spread", pd.Series(dtype=float)), errors="coerce") if not research.empty else pd.Series(dtype=float)
     line_covered = int(line_series.notna().sum()) if not line_series.empty else 0
@@ -463,7 +468,7 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
 
     cols = st.columns(5)
     with cols[0]: metric_card("Games with lines", f"{line_covered}/{len(board)}", "sportsbook spread available")
-    with cols[1]: metric_card("Games with splits", f"{split_covered}/{len(board)}", "optional ticket / money data", "The Odds API supplies sportsbook prices, not betting splits. Ticket and money percentages appear only when a separate authorized split source is published.")
+    with cols[1]: metric_card("Games with splits", f"{split_covered}/{len(board)}", "optional ticket / money data", "Sportsbook prices come from The Odds API. Public bet and money percentages come from SportsDataIO when an authorized production splits feed is connected.")
     with cols[2]: metric_card("Market Spotlights", f"{spotlight}", "ranked conference Saturday-night games", "Games tagged when both teams are AP Top 25, the matchup is in-conference, it is Saturday, and the start falls in the evening/prime-time window.")
     with cols[3]: metric_card("Biggest line move", fmt_num(biggest_move,1," pts"), "first saved/opening → current")
     with cols[4]: metric_card("Snapshots saved", f"{len(market_snapshots):,}", "append-only observations")
@@ -476,7 +481,7 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
 
     if line_covered == 0 and split_covered == 0:
         st.markdown('<div class="section-title">Market feed</div>', unsafe_allow_html=True)
-        st.info("No sportsbook observations have been published for this slate yet. Admin can refresh The Odds API or upload an authorized market snapshot CSV. The model prediction remains unchanged.")
+        st.info("No market observations have been published for this slate yet. Admin can refresh The Odds API for sportsbook lines and SportsDataIO for public betting splits. The model prediction remains unchanged.")
     else:
         c1, c2 = st.columns(2)
         with c1:
@@ -502,22 +507,22 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
 
         if split_covered == 0:
             st.markdown('<div class="section-title">Bet splits</div>', unsafe_allow_html=True)
-            st.info("The Odds API does not provide ticket % or money % betting splits. Those panels stay blank unless a separate authorized split source is imported. This prevents sportsbook-line data from being mislabeled as public-betting data.")
+            st.info("Public betting splits have not been published for this slate yet. The Odds API supplies sportsbook lines; SportsDataIO supplies public bet % and money % when the production splits feed is enabled.")
         else:
             c3, c4 = st.columns(2)
             with c3:
-                st.markdown('<div class="section-title">Biggest public sides</div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-title">Most popular sides</div>', unsafe_allow_html=True)
                 public = research[research["Ticket Leader"].fillna("").astype(str).ne("")].copy()
                 public["Ticket Leader %"] = pd.to_numeric(public["Ticket Leader %"], errors="coerce")
-                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %"] if c in public.columns]
+                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %","Plain-English Market Read"] if c in public.columns]
                 st.dataframe(public.sort_values("Ticket Leader %", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
             with c4:
-                st.markdown('<div class="section-title">Money vs tickets</div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-title">Where the dollars disagree</div>', unsafe_allow_html=True)
                 divergence = research.copy()
                 divergence["Ticket Leader %"] = pd.to_numeric(divergence.get("Ticket Leader %"), errors="coerce")
                 divergence["Money Leader %"] = pd.to_numeric(divergence.get("Money Leader %"), errors="coerce")
                 divergence["Split Difference"] = (divergence["Money Leader %"] - divergence["Ticket Leader %"]).abs()
-                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Money Leader","Split Difference","Reverse Line Movement"] if c in divergence.columns]
+                cols_show = [c for c in ["Away Team","Home Team","Ticket Leader","Money Leader","Split Difference","Reverse Line Movement","Plain-English Market Read"] if c in divergence.columns]
                 st.dataframe(divergence.sort_values("Split Difference", ascending=False)[cols_show].head(10), use_container_width=True, hide_index=True)
 
             st.markdown('<div class="section-title">Reverse movement watch</div>', unsafe_allow_html=True)
@@ -545,7 +550,7 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
 
     with st.expander("Research dataset: ranked conference prime-time hypothesis", expanded=False):
         st.markdown("The site is collecting the context needed to test whether ranked in-conference Saturday-evening games finish closer than otherwise comparable games **after controlling for the model's expected margin and team-strength gap**. This is research-only; the production model is not adjusted by this tag.")
-        research_cols = [c for c in ["Slate Date","Game ID","Away Team","Home Team","Model Pick","Model Win Probability","Model Spread","Home Rank","Away Rank","Ranked vs Ranked","Conference Game","Saturday","Prime Time","Market Spotlight","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %","Line Move Toward","Line Move Points","Reverse Line Movement","Book Agreement","Book Spread Range","Decision Home Spread","Closing Home Spread","Model-Market Gap","Actual Home Margin","Absolute Final Margin","Market Provider"] if c in research.columns]
+        research_cols = [c for c in ["Slate Date","Game ID","Away Team","Home Team","Model Pick","Model Win Probability","Model Spread","Home Rank","Away Rank","Ranked vs Ranked","Conference Game","Saturday","Prime Time","Market Spotlight","Ticket Leader","Ticket Leader %","Money Leader","Money Leader %","Plain-English Market Read","Line Move Toward","Line Move Points","Reverse Line Movement","Book Agreement","Book Spread Range","Decision Home Spread","Closing Home Spread","Model-Market Gap","Actual Home Margin","Absolute Final Margin","Market Provider","Split Provider"] if c in research.columns]
         st.dataframe(research[research_cols], use_container_width=True, hide_index=True)
         if allow_download:
             st.download_button("Download research CSV", research.to_csv(index=False).encode("utf-8"), file_name="cbb_market_research_export.csv", mime="text/csv")
@@ -736,6 +741,10 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             odds_regions = str(secret("THE_ODDS_API_REGIONS", "us") or "us")
             odds_bookmakers = str(secret("THE_ODDS_API_BOOKMAKERS", "") or "")
             odds_reference = str(secret("THE_ODDS_API_REFERENCE_BOOKMAKER", "draftkings") or "draftkings")
+            sportsdataio_key = optional_secret("SPORTSDATAIO_API_KEY")
+            sportsdataio_mode = str(secret("SPORTSDATAIO_SPLITS_MODE", "trial") or "trial").strip().lower()
+            if sportsdataio_mode not in {"trial", "production"}:
+                sportsdataio_mode = "trial"
 
             if odds_api_key and not market_board.empty:
                 st.success("The Odds API is configured as the primary sportsbook-line source.")
@@ -797,8 +806,44 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             else:
                 st.info("The Odds API is the primary sportsbook-line source, but THE_ODDS_API_KEY is not configured. Add it in Streamlit Secrets or use the manual imports below.")
 
+            st.markdown("##### SportsDataIO public betting splits")
+            if sportsdataio_key and not market_board.empty:
+                if sportsdataio_mode == "production":
+                    st.success("SportsDataIO is configured for production betting splits.")
+                    st.caption("This feed supplies public bet % and public money % only. The Odds API remains the sportsbook-line source, so the model/market firewall stays intact.")
+                else:
+                    st.warning("SportsDataIO is configured in TRIAL mode. Trial/test split percentages may be scrambled or otherwise unsuitable for public betting decisions. Refreshes are preview-only and will not be published to the public board.")
+                if st.button("Refresh SportsDataIO public betting splits", key="refresh_sportsdataio_splits"):
+                    try:
+                        cfg = SportsDataIOConfig(api_key=sportsdataio_key, splits_mode=sportsdataio_mode)
+                        with st.spinner("Matching SportsDataIO games and retrieving public bet / money split history..."):
+                            split_snapshots, split_health = SportsDataIOSplitsProvider(cfg).refresh(market_board)
+                        mapped = int(split_health.get("mapped_games", 0))
+                        covered = int(split_health.get("split_games", 0))
+                        if split_snapshots.empty:
+                            st.warning(f"SportsDataIO returned no usable split rows: {mapped}/{len(market_board)} games mapped, 0 games with parsed public splits.")
+                        elif sportsdataio_mode == "production":
+                            store.check_market_access(admin=True)
+                            count = store.publish_market_records(market_records(split_snapshots, actor))
+                            st.success(f"SportsDataIO splits published: {mapped}/{len(market_board)} games mapped • {covered} games with splits • {count} historical split rows saved.")
+                            st.cache_data.clear()
+                        else:
+                            st.success(f"SportsDataIO trial preview: {mapped}/{len(market_board)} games mapped • {covered} games with parsed splits • {len(split_snapshots)} rows. Nothing was published publicly.")
+                            preview_cols = [c for c in ["Game ID","Provider Game ID","Snapshot Time UTC","Market Type","Home Ticket %","Away Ticket %","Home Money %","Away Money %","Over Ticket %","Under Ticket %","Over Money %","Under Money %"] if c in split_snapshots.columns]
+                            st.dataframe(split_snapshots[preview_cols].tail(40), use_container_width=True, hide_index=True)
+                        if split_health.get("empty_games"):
+                            st.caption(f"Mapped games without a usable split market: {len(split_health['empty_games'])}.")
+                        if split_health.get("errors"):
+                            st.warning(f"SportsDataIO returned an error for {len(split_health['errors'])} mapped game(s). The rest of the refresh completed safely.")
+                    except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(f"SportsDataIO split refresh failed safely: {type(exc).__name__}")
+            else:
+                st.info("SPORTSDATAIO_API_KEY is not configured. Add it to Streamlit Secrets to preview or publish public bet/money splits.")
+
             st.markdown("##### Manual market snapshot import")
-            st.caption("Use this for authorized betting-split data, a historical odds extract, or another source you are permitted to store and publish. The Odds API connector handles sportsbook lines automatically; ticket % and money % require a separate authorized source/import. One row = one market snapshot at one timestamp.")
+            st.caption("Use this only for an authorized supplemental market source. The Odds API handles sportsbook lines automatically and SportsDataIO handles public bet/money splits when configured. One row = one market snapshot at one timestamp.")
             market_upload = st.file_uploader("Market snapshot CSV", type=["csv"], key="admin_market_snapshot_upload")
             if market_upload is not None:
                 try:

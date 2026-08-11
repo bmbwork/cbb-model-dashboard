@@ -311,6 +311,9 @@ class GameMarketState:
     provider: str = ""
     source_label: str = ""
     latest_snapshot_utc: str = ""
+    split_provider: str = ""
+    split_source_label: str = ""
+    split_latest_snapshot_utc: str = ""
     home_ticket_pct: float = np.nan
     away_ticket_pct: float = np.nan
     home_money_pct: float = np.nan
@@ -355,33 +358,26 @@ def _role_row(group: pd.DataFrame, role: str) -> pd.Series | None:
 
 
 def _decision_row(group: pd.DataFrame, model_time: pd.Timestamp | None, start: pd.Timestamp | None) -> pd.Series | None:
+    # Data-provenance firewall: only an explicitly tagged decision snapshot can
+    # become an ATS grading line. An ordinary observed snapshot is never silently
+    # promoted to a decision/taken line.
     explicit = _role_row(group, "decision")
-    if explicit is not None:
-        return explicit
-    g = group.copy()
-    if start is not None:
-        g = g[g["Snapshot Time UTC"] < start]
-    if g.empty:
+    if explicit is None:
         return None
-    if model_time is None:
-        return g.sort_values("Snapshot Time UTC").iloc[0]
-    before = g[g["Snapshot Time UTC"] <= model_time]
-    if not before.empty:
-        return before.sort_values("Snapshot Time UTC").iloc[-1]
-    after = g[g["Snapshot Time UTC"] > model_time]
-    return after.sort_values("Snapshot Time UTC").iloc[0] if not after.empty else None
+    if start is not None and pd.to_datetime(explicit.get("Snapshot Time UTC"), utc=True, errors="coerce") >= start:
+        return None
+    return explicit
 
 
 def _closing_row(group: pd.DataFrame, start: pd.Timestamp | None) -> pd.Series | None:
+    # Closing lines are also explicit-only. A late observed snapshot remains an
+    # observation unless an admin intentionally labels it close.
     explicit = _role_row(group, "close")
-    if explicit is not None:
-        return explicit
-    g = group.copy()
-    if start is not None:
-        g = g[g["Snapshot Time UTC"] < start]
-    if g.empty:
+    if explicit is None:
         return None
-    return g.sort_values("Snapshot Time UTC").iloc[-1]
+    if start is not None and pd.to_datetime(explicit.get("Snapshot Time UTC"), utc=True, errors="coerce") >= start:
+        return None
+    return explicit
 
 
 def summarize_game_market(row: pd.Series, snapshots: pd.DataFrame) -> GameMarketState:
@@ -398,14 +394,10 @@ def summarize_game_market(row: pd.Series, snapshots: pd.DataFrame) -> GameMarket
     spread = snap[snap["Market Type"].eq("spread")].copy()
     ml = snap[snap["Market Type"].eq("moneyline")].copy()
     total = snap[snap["Market Type"].eq("total")].copy()
-    latest_any = snap.sort_values("Snapshot Time UTC").iloc[-1]
-    provider = str(latest_any.get("Provider") or "")
-    source = str(latest_any.get("Source Label") or provider)
     model_time, start = _model_run_time(row), _start_time(row)
 
-    # The betting terminal is pregame-only. Retain post-start rows in storage for
-    # audit if they arrive, but never let them become the displayed market state,
-    # ATS decision line, closing line or research split.
+    # Pregame-only display state. Post-start observations remain in storage for
+    # audit but never affect cards, ATS, CLV, or research features.
     if start is not None:
         spread_display = spread[spread["Snapshot Time UTC"] < start].copy()
         ml_display = ml[ml["Snapshot Time UTC"] < start].copy()
@@ -413,14 +405,33 @@ def summarize_game_market(row: pd.Series, snapshots: pd.DataFrame) -> GameMarket
     else:
         spread_display, ml_display, total_display = spread, ml, total
 
-    latest_spread = spread_display.sort_values("Snapshot Time UTC").iloc[-1] if not spread_display.empty else None
+    def latest_with(group: pd.DataFrame, cols: list[str]) -> pd.Series | None:
+        if group.empty:
+            return None
+        mask = pd.Series(False, index=group.index)
+        for col in cols:
+            if col in group.columns:
+                mask = mask | pd.to_numeric(group[col], errors="coerce").notna()
+        hit = group.loc[mask].copy()
+        if hit.empty:
+            return None
+        return hit.sort_values("Snapshot Time UTC").iloc[-1]
+
+    line_spread = latest_with(spread_display, ["Home Line", "Away Line"])
+    split_spread = latest_with(spread_display, ["Home Ticket %", "Away Ticket %", "Home Money %", "Away Money %"])
+    split_ml = latest_with(ml_display, ["Home Ticket %", "Away Ticket %", "Home Money %", "Away Money %"])
+    line_total = latest_with(total_display, ["Total Line"])
+    split_total = latest_with(total_display, ["Over Ticket %", "Under Ticket %", "Over Money %", "Under Money %"])
+
     decision = _decision_row(spread, model_time, start) if not spread.empty else None
     closing = _closing_row(spread, start) if not spread.empty else None
     open_explicit = _role_row(spread, "open") if not spread.empty else None
-    first_spread = spread.sort_values("Snapshot Time UTC").iloc[0] if not spread.empty else None
-    opening = open_explicit if open_explicit is not None else first_spread
-    latest_ml = ml_display.sort_values("Snapshot Time UTC").iloc[-1] if not ml_display.empty else None
-    latest_total = total_display.sort_values("Snapshot Time UTC").iloc[-1] if not total_display.empty else None
+    first_line = None
+    if not spread_display.empty:
+        line_candidates = spread_display[pd.to_numeric(spread_display.get("Home Line"), errors="coerce").notna()].copy()
+        if not line_candidates.empty:
+            first_line = line_candidates.sort_values("Snapshot Time UTC").iloc[0]
+    opening = open_explicit if open_explicit is not None else first_line
 
     def val(r: pd.Series | None, col: str) -> float:
         return _num(r.get(col)) if r is not None else float("nan")
@@ -428,30 +439,41 @@ def summarize_game_market(row: pd.Series, snapshots: pd.DataFrame) -> GameMarket
     open_line = val(opening, "Opening Home Line")
     if not np.isfinite(open_line):
         open_line = val(opening, "Home Line")
+
+    line_source_row = line_spread if line_spread is not None else (line_total if line_total is not None else opening)
+    split_source_row = split_spread if split_spread is not None else (split_ml if split_ml is not None else split_total)
+    provider = str(line_source_row.get("Provider") or "") if line_source_row is not None else ""
+    source = str(line_source_row.get("Source Label") or provider) if line_source_row is not None else ""
+    split_provider = str(split_source_row.get("Provider") or "") if split_source_row is not None else ""
+    split_source = str(split_source_row.get("Source Label") or split_provider) if split_source_row is not None else ""
+
     return GameMarketState(
         game_id=gid,
         provider=provider,
         source_label=source,
-        latest_snapshot_utc=_safe_iso((latest_spread if latest_spread is not None else latest_any).get("Snapshot Time UTC")),
-        home_ticket_pct=val(latest_spread, "Home Ticket %"),
-        away_ticket_pct=val(latest_spread, "Away Ticket %"),
-        home_money_pct=val(latest_spread, "Home Money %"),
-        away_money_pct=val(latest_spread, "Away Money %"),
+        latest_snapshot_utc=_safe_iso(line_source_row.get("Snapshot Time UTC")) if line_source_row is not None else "",
+        split_provider=split_provider,
+        split_source_label=split_source,
+        split_latest_snapshot_utc=_safe_iso(split_source_row.get("Snapshot Time UTC")) if split_source_row is not None else "",
+        home_ticket_pct=val(split_spread, "Home Ticket %"),
+        away_ticket_pct=val(split_spread, "Away Ticket %"),
+        home_money_pct=val(split_spread, "Home Money %"),
+        away_money_pct=val(split_spread, "Away Money %"),
         opening_home_spread=open_line,
-        current_home_spread=val(latest_spread, "Home Line"),
+        current_home_spread=val(line_spread, "Home Line"),
         decision_home_spread=val(decision, "Home Line"),
         closing_home_spread=val(closing, "Home Line"),
-        moneyline_home_ticket_pct=val(latest_ml, "Home Ticket %"),
-        moneyline_home_money_pct=val(latest_ml, "Home Money %"),
-        total_over_ticket_pct=val(latest_total, "Over Ticket %"),
-        total_over_money_pct=val(latest_total, "Over Money %"),
-        total_line=val(latest_total, "Total Line"),
-        activity_level=str(latest_any.get("Activity Level") or ""),
-        ticket_count=val(latest_spread if latest_spread is not None else latest_any, "Ticket Count"),
-        provider_signals=str((latest_spread if latest_spread is not None else latest_any).get("Provider Signals") or ""),
-        book_count=val(latest_spread, "Book Count"),
-        book_spread_range=val(latest_spread, "Book Spread Range"),
-        book_agreement=str(latest_spread.get("Book Agreement") or "") if latest_spread is not None else "",
+        moneyline_home_ticket_pct=val(split_ml, "Home Ticket %"),
+        moneyline_home_money_pct=val(split_ml, "Home Money %"),
+        total_over_ticket_pct=val(split_total, "Over Ticket %"),
+        total_over_money_pct=val(split_total, "Over Money %"),
+        total_line=val(line_total, "Total Line"),
+        activity_level=str(split_source_row.get("Activity Level") or "") if split_source_row is not None else "",
+        ticket_count=val(split_source_row, "Ticket Count"),
+        provider_signals=str(split_source_row.get("Provider Signals") or "") if split_source_row is not None else "",
+        book_count=val(line_spread, "Book Count"),
+        book_spread_range=val(line_spread, "Book Spread Range"),
+        book_agreement=str(line_spread.get("Book Agreement") or "") if line_spread is not None else "",
     )
 
 
@@ -505,6 +527,9 @@ def attach_market_to_board(board: pd.DataFrame, snapshots: pd.DataFrame, context
             "_market_provider": s.provider,
             "_market_source_label": s.source_label,
             "_market_latest_snapshot_utc": s.latest_snapshot_utc,
+            "_market_split_provider": s.split_provider,
+            "_market_split_source_label": s.split_source_label,
+            "_market_split_latest_snapshot_utc": s.split_latest_snapshot_utc,
             "_market_home_ticket_pct": s.home_ticket_pct,
             "_market_away_ticket_pct": s.away_ticket_pct,
             "_market_home_money_pct": s.home_money_pct,
@@ -541,7 +566,7 @@ def attach_market_to_board(board: pd.DataFrame, snapshots: pd.DataFrame, context
     existing_close = pd.to_numeric(out.get("_closing_home_spread"), errors="coerce")
     use_close = existing_close.isna() & close.notna()
     out.loc[use_close, "_closing_home_spread"] = close.loc[use_close]
-    out.loc[use_close, "_closing_source"] = out.loc[use_close, "_market_source_label"].fillna("market snapshot") + " · last pregame spread"
+    out.loc[use_close, "_closing_source"] = out.loc[use_close, "_market_source_label"].fillna("market snapshot") + " · closing spread"
 
     # If a game is graded and no explicit ATS result was supplied, grade against
     # the contemporaneous decision line now available from market snapshots.
@@ -627,6 +652,7 @@ def market_research_frame(board: pd.DataFrame) -> pd.DataFrame:
             "Book Agreement": row.get("_market_book_agreement"),
             "Book Spread Range": row.get("_market_book_spread_range"),
             "Market Provider": row.get("_market_source_label"),
+            "Split Provider": row.get("_market_split_source_label"),
             "Final Away Score": row.get("_final_away"), "Final Home Score": row.get("_final_home"),
             "Actual Home Margin": (_num(row.get("_final_home")) - _num(row.get("_final_away"))) if np.isfinite(_num(row.get("_final_home"))) and np.isfinite(_num(row.get("_final_away"))) else np.nan,
             "Absolute Final Margin": abs(_num(row.get("_final_home")) - _num(row.get("_final_away"))) if np.isfinite(_num(row.get("_final_home"))) and np.isfinite(_num(row.get("_final_away"))) else np.nan,

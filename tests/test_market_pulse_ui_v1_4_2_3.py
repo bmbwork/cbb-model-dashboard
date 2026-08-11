@@ -40,5 +40,5 @@ def test_wide_consensus_keeps_actionable_warning_footer():
 def test_actionable_footer_is_visual_separator_not_large_paragraph():
     from pathlib import Path
     css = (Path(__file__).resolve().parents[1] / "cbb_dashboard" / "ui.py").read_text()
-    assert "font-size:.52rem !important" in css
+    assert "font-size:.58rem !important" in css
     assert "border-top:1px solid" in css

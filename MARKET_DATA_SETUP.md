@@ -1,67 +1,68 @@
-# CBB Market Terminal v1.4.2 — The Odds API Setup
+# CBB Market Terminal v1.4.3 — The Odds API + SportsDataIO
 
-## Primary source
+## Provider split
 
-V1.4.2 uses **The Odds API** as the primary automated sportsbook-line provider for NCAA men's basketball. It supplies current and historical bookmaker prices for moneyline, spreads and totals. The production V1.1.3B model remains completely market-blind.
+V1.4.3 uses two downstream market providers with different jobs:
 
-The Odds API does **not** provide public ticket-share or money/handle-share betting splits. Those fields remain optional and can be populated later from a separate authorized source or manual import without changing the database contract.
+- **The Odds API** supplies actual sportsbook lines, prices, cross-book spread ranges and line movement.
+- **SportsDataIO** supplies public bet percentage and public money percentage.
+
+Neither provider changes the V1.1.3B forecast.
 
 ## Streamlit Secrets
 
-Add the following to Streamlit Community Cloud -> App settings -> Secrets:
+Keep all market secrets above the `[auth]` section:
 
 ```toml
 THE_ODDS_API_KEY = "..."
 THE_ODDS_API_REGIONS = "us"
 THE_ODDS_API_BOOKMAKERS = ""
 THE_ODDS_API_REFERENCE_BOOKMAKER = "draftkings"
+
+SPORTSDATAIO_API_KEY = "..."
+SPORTSDATAIO_SPLITS_MODE = "trial"
 ```
 
-`THE_ODDS_API_BOOKMAKERS` is optional. When populated it takes precedence over `THE_ODDS_API_REGIONS`. The reference bookmaker is the named sportsbook whose actual line is used for the game-level display and ATS provenance when available. Cross-book lines are used only for disagreement/range diagnostics.
+`SPORTSDATAIO_SPLITS_MODE` values:
 
-## Current refresh
+- `trial` — fetch and preview in Admin Studio only; nothing is published publicly.
+- `production` — publish SportsDataIO split history to the Market Terminal.
 
-Admin Studio -> Market Data -> **Refresh The Odds API market lines** queries `basketball_ncaab` for `h2h`, `spreads` and `totals` in American odds format.
+Use production only after SportsDataIO confirms the split percentages in the account are production/unscrambled and licensed for the intended display.
 
-For every mapped game, the adapter stores:
+## SportsDataIO refresh
 
-- reference-book spread and price;
-- reference-book moneyline;
-- reference-book total and prices;
-- number of sportsbooks with a spread;
-- minimum/maximum home spread across books;
-- cross-book spread range and agreement label;
-- provider event id and source sportsbook;
-- provider update timestamp;
-- API quota headers returned by The Odds API.
+Admin Studio -> Market Data -> **Refresh SportsDataIO public betting splits**.
 
-Repeated refreshes build the line-movement history. The first saved spread acts as the tracked opening line unless an explicit `open` historical/manual snapshot is stored.
+The connector:
 
-## Historical backfill
+1. calls `GameOddsByDate/{date}` to map the published CBB slate to SportsDataIO GameIDs;
+2. calls `BettingSplitsByGameId/{gameId}` for each mapped game;
+3. uses `BettingMetadata` as an enum-label fallback;
+4. stores spread, moneyline and total split history as `observed` snapshots;
+5. never writes sportsbook lines from SportsDataIO into the ATS/CLV line fields.
 
-Paid The Odds API plans expose historical featured-market snapshots. Admin Studio includes a historical snapshot tool that accepts an ISO UTC timestamp and one of four roles:
+## Historical slates
 
-- `observed`
-- `open`
-- `decision`
-- `close`
+The split-by-game endpoint returns split movement/history for the game, so the same SportsDataIO refresh button can populate historical split observations when the account entitlement exposes those games.
 
-Historical featured-market requests cost 10 times the normal market/region credit rate. The UI therefore makes historical pulls explicit rather than running them automatically.
+## ATS / CLV provenance
 
-Use `decision` only for a line that represents the pregame number available at the model/bet-decision point. Use `close` only for a last valid pregame line. ATS grading uses the decision/taken line; the closing line is separate for CLV.
+- `observed` = market observation only.
+- `open` = explicit opener.
+- `decision` = the saved pregame line eligible for ATS grading.
+- `close` = closing line used separately for CLV.
 
-## Bet splits
+V1.4.3 does not infer decision or closing lines from ordinary observations.
 
-The Odds API does not supply ticket % or money %. V1.4.2 does not infer or fabricate them from line movement. The Market Terminal clearly labels these as unavailable unless a separate authorized split feed/import is published.
+## Public interpretation
 
-The existing CSV market-import path remains available for future licensed splits data. It writes to the same provider-agnostic snapshot table.
+The Market Pulse translates the feed into plain English:
 
-## Cost controls
+- Public Bets = share of betting tickets.
+- Public Money = share of dollars wagered.
+- If tickets and money disagree, the card explains which team has more bets and which team has more dollars.
+- If the line moves against the popular side, the card explains that the market is not following the crowd.
+- The copy may note when the model agrees with the money side or disagrees with both the public and the money.
 
-For the standard current endpoint, The Odds API charges by requested market x region. The default configuration requests three featured markets in one region. The admin success message shows the API response headers for credits used, credits remaining and last-request cost.
-
-Historical featured-market snapshots use the documented 10x multiplier and are never auto-polled.
-
-## Security
-
-The API key is read only from Streamlit Secrets and never written into Supabase, HTML, logs, exported CSVs or the Git repository. Public users have no refresh controls.
+The site does not label these patterns “sharp money” and does not automatically call them profitable bets.

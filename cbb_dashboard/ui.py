@@ -270,7 +270,9 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
 .market-pulse-stat span { display:block; color:#9b857a; font-size:.50rem; font-weight:900; letter-spacing:.075em; text-transform:uppercase; line-height:1.25; }
 .market-pulse-stat strong { display:block; color:#f9f4ee; font-size:.78rem; line-height:1.25; margin-top:3px; overflow-wrap:anywhere; }
 .market-pulse-stat small { display:block; color:#806e66; font-size:.50rem; line-height:1.3; margin-top:3px; overflow-wrap:anywhere; }
-.market-pulse-read { color:#b6a49b; font-size:.52rem !important; line-height:1.35; margin-top:8px; padding-top:7px; border-top:1px solid rgba(231,203,188,.08); }
+.market-pulse-read { color:#cdbab0; font-size:.58rem !important; line-height:1.45; margin-top:9px; padding-top:8px; border-top:1px solid rgba(231,203,188,.08); }
+.market-pulse-read strong { display:block; color:#f2c36b; font-size:.49rem; font-weight:950; letter-spacing:.09em; margin-bottom:3px; }
+.market-pulse-read span { display:block; color:#cdbab0; }
 .market-empty { color:#a9958b; font-size:.62rem; line-height:1.45; }
 .market-pulse.reverse { border-color:rgba(251,191,36,.38); background:linear-gradient(90deg,rgba(251,191,36,.10),rgba(251,113,133,.035)); }
 .chip.spotlight { color:#ffe28a; border-color:rgba(251,191,36,.42); background:rgba(251,191,36,.10); box-shadow:0 0 0 1px rgba(251,191,36,.04) inset; }

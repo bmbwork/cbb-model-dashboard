@@ -486,16 +486,94 @@ def game_context_chips_html(row: pd.Series) -> str:
     return "".join(chips)
 
 
+def market_interpretation_text(row: pd.Series) -> str:
+    """Plain-English bettor read of ticket %, money %, and line movement.
+
+    The wording intentionally avoids claiming that larger wagers are "sharp" or
+    that a split creates an automatic betting edge. It says what the market is
+    doing in language a casual bettor can understand.
+    """
+    f = market_features(row)
+    ticket_team, money_team = f["ticket_team"], f["money_team"]
+    ticket_pct, money_pct = f["ticket_pct"], f["money_pct"]
+    model_pick = str(row.get("Model Pick") or "")
+    sentences: list[str] = []
+
+    if ticket_team and money_team:
+        if ticket_team != money_team:
+            sentences.append(
+                f"Most bets are on {ticket_team} ({ticket_pct:.0f}%), but most of the money is on {money_team} ({money_pct:.0f}%). "
+                f"Fewer bets are backing {money_team}, but those bets represent more dollars."
+            )
+        else:
+            gap = money_pct - ticket_pct if np.isfinite(ticket_pct) and np.isfinite(money_pct) else float("nan")
+            if np.isfinite(gap) and gap >= 10:
+                sentences.append(
+                    f"{ticket_team} has {ticket_pct:.0f}% of the bets and {money_pct:.0f}% of the money. "
+                    f"The dollars are even more one-sided than the ticket count, which means the average bet on {ticket_team} is larger."
+                )
+            elif np.isfinite(gap) and gap <= -10:
+                sentences.append(
+                    f"{ticket_team} has {ticket_pct:.0f}% of the bets but only {money_pct:.0f}% of the money. "
+                    f"A lot of people are betting {ticket_team}, but the dollars are less convinced."
+                )
+            elif np.isfinite(ticket_pct) and ticket_pct >= 65:
+                sentences.append(
+                    f"The crowd and the money both favor {ticket_team}: {ticket_pct:.0f}% of bets and {money_pct:.0f}% of the money are on that side."
+                )
+            else:
+                sentences.append(
+                    f"Bets and money are leaning the same way toward {ticket_team}, but the split is not extreme."
+                )
+    elif ticket_team:
+        sentences.append(f"Most bets are on {ticket_team} ({ticket_pct:.0f}%). Money-split data is not available for this snapshot.")
+    elif money_team:
+        sentences.append(f"Most of the money is on {money_team} ({money_pct:.0f}%). Ticket-split data is not available for this snapshot.")
+
+    if f["reverse_line_movement"] and f["line_move_team"]:
+        sentences.append(
+            f"The line is moving away from the popular side and toward {f['line_move_team']}. "
+            "Bettors watch this because the sportsbook market is not following the crowd."
+        )
+    elif f["line_move_team"] and np.isfinite(f["line_move_points"]):
+        move_team = f["line_move_team"]
+        if ticket_team and money_team and ticket_team != money_team and move_team == money_team:
+            sentences.append(
+                f"The line has moved {f['line_move_points']:.1f} points toward {move_team}, the side with more money but fewer bets. "
+                "That is a stronger market disagreement than the percentages alone."
+            )
+        elif ticket_team and money_team and move_team == ticket_team == money_team:
+            sentences.append(
+                f"The line has moved {f['line_move_points']:.1f} points toward {move_team} too, so the bets, the money, and the line are all moving the same way."
+            )
+        elif ticket_team and move_team == ticket_team:
+            sentences.append(f"The line has moved {f['line_move_points']:.1f} points toward {move_team}, in the same direction as the public.")
+        else:
+            sentences.append(f"The line has moved {f['line_move_points']:.1f} points toward {move_team}.")
+
+    if model_pick and ticket_team and money_team:
+        if ticket_team != money_team and model_pick == money_team:
+            sentences.append(f"The model is also on {model_pick}, so the model agrees with the money side rather than the more popular side.")
+        elif model_pick == ticket_team == money_team:
+            sentences.append(f"The model also likes {model_pick}. The model, the public, and the money all agree, but agreement is not a guarantee.")
+        elif model_pick != ticket_team and model_pick != money_team:
+            sentences.append(f"The model is on {model_pick}, while both the public and the money prefer the other side. This is a true model-versus-market disagreement.")
+
+    return " ".join(sentences[:3])
+
+
 def market_pulse_html(row: pd.Series) -> str:
     f = market_features(row)
-    provider = str(row.get("_market_source_label") or "")
-    latest = str(row.get("_market_latest_snapshot_utc") or "")
+    line_provider = str(row.get("_market_source_label") or "")
+    line_latest = str(row.get("_market_latest_snapshot_utc") or "")
+    split_provider = str(row.get("_market_split_source_label") or "")
+    split_latest = str(row.get("_market_split_latest_snapshot_utc") or "")
     has_split = bool(f["ticket_team"] or f["money_team"])
     opening = _num(row, "_market_opening_home_spread")
     current = _num(row, "_market_current_home_spread")
     home = str(row.get("Home Team") or "Home")
     if not has_split and not (np.isfinite(opening) or np.isfinite(current)):
-        return compact_html('<div class="market-pulse empty"><div class="market-pulse-head"><span>MARKET PULSE</span></div><div class="market-empty">Sportsbook lines are not available for this game yet.</div></div>')
+        return compact_html('<div class="market-pulse empty"><div class="market-pulse-head"><span>MARKET PULSE</span></div><div class="market-empty">Sportsbook lines and public betting splits are not available for this game yet.</div></div>')
 
     if np.isfinite(current):
         line_value = f"{home} {current:+.1f}"
@@ -529,44 +607,37 @@ def market_pulse_html(row: pd.Series) -> str:
         agreement_note_parts.append(f"{book_range:.1f} pt range")
     agreement_note = " · ".join(agreement_note_parts) if agreement_note_parts else "cross-book spread view"
 
-    reads: list[str] = []
-    if f["public_heavy"] and f["ticket_team"]:
-        reads.append(f"Heavy public support on {f['ticket_team']}.")
-    if f["money_team"] and f["ticket_team"] and f["money_team"] != f["ticket_team"]:
-        reads.append(f"Bets and money disagree: tickets favor {f['ticket_team']}, while money favors {f['money_team']}.")
-    elif f["money_team"] and f["ticket_team"] and f["money_team"] == f["ticket_team"]:
-        reads.append(f"Tickets and money both favor {f['ticket_team']}.")
-    if f["line_move_team"] and np.isfinite(f["line_move_points"]):
-        reads.append(f"The line has moved {f['line_move_points']:.1f} points toward {f['line_move_team']}.")
-    if f["reverse_line_movement"]:
-        reads.append("The line is moving against the side receiving most tickets -- a market disagreement worth watching.")
-    if book_agreement == "wide" and np.isfinite(book_range):
-        reads.append(f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread.")
+    source_bits: list[str] = []
+    if line_provider:
+        stamp = f"{line_latest[11:16]} UTC" if len(line_latest) >= 16 else ""
+        source_bits.append(f"Lines: {line_provider}" + (f" · {stamp}" if stamp else ""))
+    if split_provider:
+        stamp = f"{split_latest[11:16]} UTC" if len(split_latest) >= 16 else ""
+        split_bits = [f"Splits: {split_provider}"]
+        ticket_count = _num(row, "_market_ticket_count")
+        activity = str(row.get("_market_activity_level") or "").strip()
+        if np.isfinite(ticket_count):
+            split_bits.append(f"{int(ticket_count):,} tracked bets")
+            if activity:
+                split_bits.append(f"{activity} activity")
+        if stamp:
+            split_bits.append(stamp)
+        source_bits.append(" · ".join(split_bits))
+    source_text = " | ".join(source_bits) or "Published market data"
 
-    source = provider or "Published market source"
-    stamp = f"Snapshot {latest[11:16]} UTC" if len(latest) >= 16 else ""
-    ticket_count = _num(row, "_market_ticket_count")
-    activity = str(row.get("_market_activity_level") or "").strip()
-    source_bits = [source]
-    if np.isfinite(ticket_count):
-        source_bits.append(f"{int(ticket_count):,} tracked bets")
-        if activity:
-            source_bits.append(f"{activity} activity")
-        if ticket_count < 250:
-            reads.append("The split sample is still small, so percentages can move sharply.")
-    if stamp:
-        source_bits.append(stamp)
-    source_text = " · ".join(source_bits)
-    read_text = " ".join(reads[:3])
-    read_html = f'<div class="market-pulse-read">{esc(read_text)}</div>' if read_text else ""
+    read_text = market_interpretation_text(row)
+    if book_agreement == "wide" and np.isfinite(book_range):
+        extra = f"Sportsbooks disagree by as much as {book_range:.1f} points on the spread."
+        read_text = f"{read_text} {extra}".strip()
+    read_html = f'<div class="market-pulse-read"><strong>WHAT IT MEANS</strong><span>{esc(read_text)}</span></div>' if read_text else ""
     css = "reverse" if f["reverse_line_movement"] else "live"
 
     if has_split:
         ticket = f"{f['ticket_team']} {_pct_text(f['ticket_pct'])}" if f["ticket_team"] else "--"
         money = f"{f['money_team']} {_pct_text(f['money_pct'])}" if f["money_team"] else "--"
         stats = (
-            f'<div class="market-pulse-stat"><span>BETS</span><strong>{esc(ticket)}</strong><small>share of tickets</small></div>'
-            f'<div class="market-pulse-stat"><span>MONEY</span><strong>{esc(money)}</strong><small>share of money</small></div>'
+            f'<div class="market-pulse-stat"><span>PUBLIC BETS</span><strong>{esc(ticket)}</strong><small>share of betting tickets</small></div>'
+            f'<div class="market-pulse-stat"><span>PUBLIC MONEY</span><strong>{esc(money)}</strong><small>share of dollars wagered</small></div>'
             f'<div class="market-pulse-stat"><span>SPORTSBOOK LINE</span><strong>{esc(line_value)}</strong><small>current reference line</small></div>'
         )
     else:
@@ -583,6 +654,7 @@ def market_pulse_html(row: pd.Series) -> str:
         f'{read_html}</div>'
     )
     return compact_html(html)
+
 
 def market_context_html(row: pd.Series) -> str:
     decision, decision_source = decision_home_spread(row)
