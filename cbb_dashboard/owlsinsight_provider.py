@@ -35,7 +35,7 @@ class OwlsInsightSplitsProvider:
         self.session.headers.update({
             "Accept": "application/json",
             "Authorization": f"Bearer {key}",
-            "User-Agent": "cbb-market-terminal/1.4.5",
+            "User-Agent": "cbb-market-terminal/1.4.6",
         })
         self.last_rate_headers: dict[str, str] = {}
 
@@ -93,25 +93,50 @@ class OwlsInsightSplitsProvider:
         return self._get("/api/v1/ncaab/splits")
 
     def historical_public_betting(self, slate_date: str) -> Any:
+        """Fetch one completed NCAAB slate from the MVP historical archive.
+
+        Owls documents a maximum page size of 100 for /history/public-betting,
+        so Saturday college slates must be paginated rather than assuming a
+        single response contains every game.
+        """
         day = pd.to_datetime(slate_date, errors="coerce")
         if pd.isna(day):
             raise MarketDataError("Owls Insight historical refresh needs a valid slate date.")
         date_str = day.strftime("%Y-%m-%d")
         rows: list[Any] = []
         offset = 0
+        pages = 0
+        seen_signatures: set[tuple[str, ...]] = set()
         while True:
             payload = self._get(
                 "/api/v1/history/public-betting",
                 params={"sport": "ncaab", "startDate": date_str, "endDate": date_str, "limit": 100, "offset": offset},
             )
             page = self._data_list(payload)
+            pages += 1
+            if not page:
+                break
+            # Defensive guard against a provider accidentally ignoring offset.
+            signature = tuple(self._event_id(x) or str(x)[:120] for x in page[:5])
+            if signature in seen_signatures:
+                break
+            seen_signatures.add(signature)
             rows.extend(page)
             if len(page) < 100:
                 break
             offset += 100
-            if offset >= 1000:
+            if offset >= 5000:
                 break
-        return {"sport": "ncaab", "data": rows, "meta": {"historical": True, "date": date_str}}
+        return {
+            "sport": "ncaab",
+            "data": rows,
+            "meta": {
+                "historical": True,
+                "date": date_str,
+                "pages_fetched": pages,
+                "records_fetched": len(rows),
+            },
+        }
 
     @classmethod
     def _data_list(cls, payload: Any) -> list[dict[str, Any]]:
@@ -240,11 +265,24 @@ class OwlsInsightSplitsProvider:
 
     @classmethod
     def _snapshot_time(cls, payload: Any, event: dict[str, Any], book: dict[str, Any]) -> str:
-        for obj in [book, event, payload if isinstance(payload, dict) else {}]:
-            raw = cls._get_alias(obj, ["timestamp", "updated_at", "updatedAt", "last_updated", "lastUpdated", "snapshot_time", "snapshotTime", "created_at", "createdAt"], None)
+        meta = payload.get("meta", {}) if isinstance(payload, dict) and isinstance(payload.get("meta"), dict) else {}
+        aliases = [
+            "timestamp", "updated_at", "updatedAt", "last_updated", "lastUpdated",
+            "snapshot_time", "snapshotTime", "created_at", "createdAt",
+            "commence_time", "commenceTime", "game_time", "gameTime",
+        ]
+        for obj in [book, event, payload if isinstance(payload, dict) else {}, meta]:
+            raw = cls._get_alias(obj, aliases, None)
             ts = pd.to_datetime(raw, utc=True, errors="coerce")
             if pd.notna(ts):
                 return ts.isoformat()
+        # Historical public-betting records may omit an observation timestamp.
+        # Use a deterministic end-of-day marker from the requested archive date
+        # so rerunning the same backfill does not create duplicate hashes.
+        hist_date = cls._get_alias(meta, ["date"], None)
+        hist_day = pd.to_datetime(hist_date, utc=True, errors="coerce")
+        if pd.notna(hist_day):
+            return (hist_day.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)).isoformat()
         return datetime.now(timezone.utc).isoformat()
 
     @classmethod
@@ -334,7 +372,13 @@ class OwlsInsightSplitsProvider:
 
     def refresh(self, board: pd.DataFrame, slate_date: str | None = None, historical: bool = False) -> tuple[pd.DataFrame, dict[str, Any]]:
         payload = self.historical_public_betting(slate_date or "") if historical else self.live_splits()
-        return self.parse(payload, board)
+        frame, health = self.parse(payload, board)
+        meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
+        health["mode"] = "historical" if historical else "live"
+        health["requested_date"] = str(meta.get("date") or slate_date or "")
+        health["pages_fetched"] = int(meta.get("pages_fetched") or (1 if historical else 0))
+        health["records_fetched"] = int(meta.get("records_fetched") or health.get("provider_events", 0))
+        return frame, health
 
 
 def _leader(home: str, away: str, home_pct: float, away_pct: float) -> tuple[str, float]:

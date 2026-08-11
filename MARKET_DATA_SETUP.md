@@ -1,4 +1,4 @@
-# CBB Market Terminal v1.4.5 — Owls Insight Sharp Money
+# CBB Market Terminal v1.4.6 — Owls Historical Backfill
 
 ## Streamlit secret
 
@@ -49,3 +49,11 @@ The public site may say things such as:
 - “The model pick conflicts with a strong sharp-money signal.”
 
 Raw percentages remain owner-only.
+
+## V1.4.6 historical Owls backfill
+
+Admin Studio now has a dedicated **Historical Owls Insight backfill (MVP)** panel. Select any completed date that already has a published decision board, then run the backfill. For `2026-02-07`, select that date and click **Backfill historical Owls betting splits**.
+
+The connector requests `/api/v1/history/public-betting` with `sport=ncaab`, identical `startDate`/`endDate`, and paginates in 100-record pages. Raw ticket/handle percentages remain in owner-only storage. The checkbox in the backfill panel controls whether the public qualitative crowd/sharp-money wording is also refreshed.
+
+No new database migration is required beyond `supabase/market_terminal_v1_4_5.sql`.

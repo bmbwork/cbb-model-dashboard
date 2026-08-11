@@ -1,6 +1,6 @@
-# CBB Model Dashboard v1.4.5 — Owls Insight Sharp-Money Layer
+# CBB Model Dashboard v1.4.6 — Owls Historical Backfill
 
-V1.4.5 extends the v1.4.4 Owls Insight integration with an explicit sharp-money interpretation layer while keeping the production model market-blind.
+V1.4.6 keeps the v1.4.5 Owls sharp-money layer and adds an explicit MVP historical split-backfill workflow for completed published slates while keeping the production model market-blind.
 
 ## Data roles
 
@@ -30,3 +30,7 @@ These are dashboard interpretation thresholds, not Owls Insight provider-defined
 4. After Streamlit redeploys, sign in and use **Admin Studio → Market Data → Refresh Owls Insight betting splits + sharp money**.
 
 Raw ticket/handle percentages and row-level sharp diagnostics remain owner-only. Public cards receive only qualitative crowd/money/sharp commentary authorized for display.
+
+## V1.4.6 historical split backfill
+
+V1.4.6 adds an explicit MVP historical Owls backfill panel in **Admin Studio → Market Data**. It supports completed published slates such as `2026-02-07`, paginates the historical public-betting archive, stores raw split data owner-only, and optionally refreshes the public non-numeric betting/sharp-money commentary. No new Supabase migration is required.
