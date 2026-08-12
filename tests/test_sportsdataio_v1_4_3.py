@@ -61,7 +61,7 @@ def test_line_and_split_providers_merge_without_overwriting_each_other(board_df)
     snapshots = normalize_market_import(pd.DataFrame([
         {
             "Slate Date": "2026-01-10", "Game ID": "101", "Snapshot Time UTC": "2026-01-10T19:20:00Z",
-            "Market Type": "spread", "Provider": "the_odds_api", "Source Label": "The Odds API · DraftKings",
+            "Market Type": "spread", "Provider": "owls_insight_odds", "Source Label": "Owls Insight · DraftKings",
             "Home Line": -4.5, "Book Count": 8, "Book Spread Range": .5, "Book Agreement": "tight", "Snapshot Role": "observed",
         },
         {
@@ -75,7 +75,7 @@ def test_line_and_split_providers_merge_without_overwriting_each_other(board_df)
     assert row["_market_current_home_spread"] == -4.5
     assert row["_market_home_ticket_pct"] == 41
     assert row["_market_home_money_pct"] == 66
-    assert row["_market_source_label"] == "The Odds API · DraftKings"
+    assert row["_market_source_label"] == "Owls Insight · DraftKings"
     assert row["_market_split_source_label"] == "SportsDataIO betting splits"
     html = market_pulse_html(row)
     assert "PUBLIC BETS" not in html
@@ -90,12 +90,12 @@ def test_plain_english_market_read_explains_money_ticket_disagreement(board_df):
     snapshots = normalize_market_import(pd.DataFrame([
         {
             "Slate Date": "2026-01-10", "Game ID": "101", "Snapshot Time UTC": "2026-01-10T19:00:00Z",
-            "Market Type": "spread", "Provider": "the_odds_api", "Source Label": "The Odds API · DraftKings",
+            "Market Type": "spread", "Provider": "owls_insight_odds", "Source Label": "Owls Insight · DraftKings",
             "Home Line": -3.0, "Snapshot Role": "open",
         },
         {
             "Slate Date": "2026-01-10", "Game ID": "101", "Snapshot Time UTC": "2026-01-10T19:25:00Z",
-            "Market Type": "spread", "Provider": "the_odds_api", "Source Label": "The Odds API · DraftKings",
+            "Market Type": "spread", "Provider": "owls_insight_odds", "Source Label": "Owls Insight · DraftKings",
             "Home Line": -4.5, "Snapshot Role": "observed",
         },
         {

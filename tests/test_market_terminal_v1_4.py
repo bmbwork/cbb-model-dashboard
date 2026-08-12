@@ -127,8 +127,9 @@ def test_market_schema_is_public_read_server_write_only():
 def test_app_has_market_terminal_and_admin_refresh_but_no_public_secret():
     source = (ROOT / "app.py").read_text()
     assert '"Market Terminal"' in source
-    assert "Refresh The Odds API market lines" in source
-    assert "THE_ODDS_API_KEY" in source
+    assert "Refresh Owls sportsbook lines" in source
+    assert "OWLS_INSIGHT_API_KEY" in source
+    assert "THE_ODDS_API_KEY" not in source
     assert "st.write(action_key" not in source
     assert "raw bet" not in source.lower()
 

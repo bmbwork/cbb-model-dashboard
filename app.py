@@ -46,7 +46,7 @@ from cbb_dashboard.market import (
     normalize_market_import,
     snapshots_frame,
 )
-from cbb_dashboard.odds_api_provider import OddsApiConfig, OddsApiMarketProvider
+from cbb_dashboard.owlsinsight_odds_provider import OwlsInsightOddsConfig, OwlsInsightOddsProvider
 from cbb_dashboard.owlsinsight_provider import OwlsInsightConfig, OwlsInsightSplitsProvider, annotate_sharp_money_signals, derive_public_betting_notes
 from cbb_dashboard.performance import (
     aggregate_metrics,
@@ -76,7 +76,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.7"
+APP_VERSION = "1.4.8"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",
@@ -495,7 +495,7 @@ def render_market_terminal(board: pd.DataFrame, market_snapshots: pd.DataFrame, 
 
     if line_covered == 0 and crowd_covered == 0:
         st.markdown('<div class="section-title">Market feed</div>', unsafe_allow_html=True)
-        st.info("No market intelligence has been published for this slate yet. Admin can refresh The Odds API for sportsbook lines and Owls Insight for owner-only betting splits plus public plain-English commentary.")
+        st.info("No market intelligence has been published for this slate yet. Admin can refresh Owls Insight for sportsbook lines plus owner-only betting splits and public plain-English commentary.")
     else:
         c1, c2 = st.columns(2)
         with c1:
@@ -652,7 +652,7 @@ The site is built to answer four simple questions: **Who does the model like? By
 
 **Sharp-money signal** — the dashboard flags a possible sharp-money side only when the dollar share is meaningfully heavier than the ticket share. Agreement across multiple split sources is stronger than a one-book signal. This can indicate larger or more informed wagers, but it does not prove who placed the bets and it is never fed into the production model.
 
-**Line move** — how the sportsbook spread changed from the first saved/opening number to the latest saved number. With live Odds API polling, the first observation becomes our tracked opening unless an explicit historical opener is saved.
+**Line move** — how the sportsbook spread changed from the first saved/opening number to the latest saved number. With live Owls Insight polling, the first saved observation becomes our tracked opening unless an explicit opener is stored.
 
 **Reverse movement** — most tickets favor one team while the spread moves toward the other team. It is a market-disagreement flag, not an automatic bet signal.
 
@@ -745,72 +745,69 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
                 except Exception as exc:
                     st.error(f"Selected board could not be loaded: {exc}")
 
-            odds_api_key = optional_secret("THE_ODDS_API_KEY")
-            odds_regions = str(secret("THE_ODDS_API_REGIONS", "us") or "us")
-            odds_bookmakers = str(secret("THE_ODDS_API_BOOKMAKERS", "") or "")
-            odds_reference = str(secret("THE_ODDS_API_REFERENCE_BOOKMAKER", "draftkings") or "draftkings")
             owls_key = optional_secret("OWLS_INSIGHT_API_KEY")
-
-            if odds_api_key and not market_board.empty:
-                st.success("The Odds API is configured as the primary sportsbook-line source.")
-                st.caption("It supplies real sportsbook prices, spreads, totals and cross-book comparison. It does not supply ticket % or money % betting splits; those remain a separate optional import/source.")
-                if st.button("Refresh The Odds API market lines", type="primary", key="refresh_odds_api_market"):
+            owls_odds_books = str(secret(
+                "OWLS_INSIGHT_ODDS_BOOKS",
+                "pinnacle,circa,draftkings,fanduel,betmgm,caesars,bet365,hardrock,westgate,wynn,south_point,stations",
+            ) or "")
+            owls_reference = str(secret("OWLS_INSIGHT_REFERENCE_BOOKMAKER", "draftkings") or "draftkings")
+            st.markdown("##### Owls Insight sportsbook odds — sole production provider")
+            if not owls_key:
+                st.info("OWLS_INSIGHT_API_KEY is not configured. Add the full key to Streamlit Secrets before refreshing sportsbook lines or betting splits.")
+            elif market_board.empty:
+                st.info("The selected board could not be loaded, so market data cannot be refreshed yet.")
+            else:
+                st.success("Owls Insight is configured as the sole production market-data provider for sportsbook odds and owner-only betting splits.")
+                st.caption("Sportsbook odds remain downstream only. DraftKings is the default reference line; Pinnacle/Circa and the broader returned book set are retained as market-comparison diagnostics.")
+                owls_odds_role = st.selectbox(
+                    "How should this sportsbook snapshot be used?",
+                    ["observed", "open", "decision", "close"],
+                    key="owls_odds_snapshot_role",
+                    help="Observed builds line history only. Decision is the explicit pre-tip ATS grading line. Close is the explicit pre-tip CLV line. Roles are never promoted automatically.",
+                )
+                if st.button("Refresh Owls sportsbook lines", type="primary", key="refresh_owls_market_odds"):
                     try:
                         store.check_market_access(admin=True)
-                        cfg = OddsApiConfig(
-                            api_key=odds_api_key,
-                            regions=odds_regions,
-                            bookmakers=odds_bookmakers,
-                            reference_bookmaker=odds_reference,
+                        cfg = OwlsInsightOddsConfig(
+                            api_key=owls_key,
+                            books=owls_odds_books,
+                            reference_bookmaker=owls_reference,
                         )
-                        with st.spinner("Refreshing sportsbook spreads, moneylines, totals and cross-book line agreement..."):
-                            snapshots, context, health = OddsApiMarketProvider(cfg).refresh(market_board)
+                        with st.spinner("Refreshing Owls sportsbook spreads, moneylines, totals and cross-book agreement..."):
+                            snapshots, _, health = OwlsInsightOddsProvider(cfg).refresh(
+                                market_board,
+                                snapshot_role=owls_odds_role,
+                            )
                             snapshot_count = store.publish_market_records(market_records(snapshots, actor)) if not snapshots.empty else 0
-                        st.success(f"The Odds API refresh complete: {health.get('mapped_games',0)}/{health.get('board_games',0)} games mapped • {snapshot_count} snapshot rows.")
-                        remaining = str(health.get("requests_remaining") or "").strip()
-                        used = str(health.get("requests_used") or "").strip()
-                        last = str(health.get("requests_last") or "").strip()
-                        if remaining or used or last:
-                            st.caption(f"API credits — last request: {last or '—'} • used this period: {used or '—'} • remaining: {remaining or '—'}")
-                        if health.get("mapped_games", 0) < health.get("board_games", 0):
-                            st.warning("Some published games could not be matched to The Odds API event list. No market line was fabricated for unmatched games.")
+                        st.success(
+                            f"Owls sportsbook refresh complete: {health.get('mapped_games',0)}/{health.get('board_games',0)} games mapped • "
+                            f"{snapshot_count} snapshot rows • role={owls_odds_role}."
+                        )
+                        returned = [str(x) for x in (health.get("books_returned") or []) if str(x).strip()]
+                        available = [str(x) for x in (health.get("available_books") or []) if str(x).strip()]
+                        if returned:
+                            st.caption(f"Books returned: {', '.join(returned)}")
+                        elif available:
+                            st.caption(f"Owls reports these books as available for this request: {', '.join(available)}")
+                        freshness = health.get("freshness") or {}
+                        if freshness:
+                            age = freshness.get("ageSeconds")
+                            stale = bool(freshness.get("stale"))
+                            st.caption(f"Owls feed freshness: age={age if age is not None else '—'}s • stale={'yes' if stale else 'no'}")
+                            if stale:
+                                st.warning("Owls marked the returned odds feed as stale. The snapshot was stored with its provider timestamp; review freshness before using it as a decision or close line.")
+                        rate = health.get("rate") or {}
+                        if rate.get("remaining_month") or rate.get("remaining_minute"):
+                            st.caption(f"Owls API requests remaining — minute: {rate.get('remaining_minute') or '—'} • month: {rate.get('remaining_month') or '—'}")
+                        if health.get("unmatched_game_ids"):
+                            st.warning(f"{len(health['unmatched_game_ids'])} published game(s) could not be matched to the current Owls NCAAB odds feed. No market line was fabricated for them.")
                         if health.get("reference_fallback_games"):
-                            st.caption(f"The configured reference sportsbook was unavailable for {len(health['reference_fallback_games'])} game(s); an available named sportsbook was used and preserved in the source label.")
+                            st.caption(f"DraftKings/the configured reference book was unavailable for {len(health['reference_fallback_games'])} game(s); the actual fallback sportsbook is preserved in each Source Label.")
                         st.cache_data.clear()
                     except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
                         st.error(str(exc))
                     except Exception as exc:
-                        st.error(f"The Odds API refresh failed safely: {type(exc).__name__}")
-
-                with st.expander("Historical Odds API snapshot (paid plans)", expanded=False):
-                    st.caption("Historical featured-market requests cost 10× the normal per-market credit rate. Use this only when you intentionally want to backfill an old slate. One bulk snapshot can cover the full NCAAB slate at that timestamp.")
-                    hist_stamp = st.text_input("Historical snapshot time (UTC / ISO 8601)", placeholder="2026-03-19T23:00:00Z", key="odds_api_hist_stamp")
-                    hist_role = st.selectbox("How should this snapshot be used?", ["observed", "open", "decision", "close"], key="odds_api_hist_role")
-                    if st.button("Backfill historical Odds API snapshot", key="refresh_odds_api_historical"):
-                        try:
-                            store.check_market_access(admin=True)
-                            cfg = OddsApiConfig(
-                                api_key=odds_api_key,
-                                regions=odds_regions,
-                                bookmakers=odds_bookmakers,
-                                reference_bookmaker=odds_reference,
-                            )
-                            with st.spinner("Fetching the historical sportsbook snapshot..."):
-                                snapshots, _, health = OddsApiMarketProvider(cfg).refresh(market_board, historical_at=hist_stamp, snapshot_role=hist_role)
-                                snapshot_count = store.publish_market_records(market_records(snapshots, actor)) if not snapshots.empty else 0
-                            st.success(f"Historical snapshot published: {health.get('mapped_games',0)}/{health.get('board_games',0)} games mapped • {snapshot_count} rows • role={hist_role}.")
-                            last = str(health.get("requests_last") or "").strip()
-                            remaining = str(health.get("requests_remaining") or "").strip()
-                            if last or remaining:
-                                st.caption(f"Historical API credits — last request: {last or '—'} • remaining: {remaining or '—'}")
-                            st.cache_data.clear()
-                        except (MarketDataError, StorageOperationError, StorageConfigurationError) as exc:
-                            st.error(str(exc))
-                        except Exception as exc:
-                            st.error(f"Historical Odds API refresh failed safely: {type(exc).__name__}")
-            else:
-                st.info("The Odds API is the primary sportsbook-line source, but THE_ODDS_API_KEY is not configured. Add it in Streamlit Secrets or use the manual imports below.")
-
+                        st.error(f"Owls Insight sportsbook refresh failed safely: {type(exc).__name__}")
             st.markdown("##### Owls Insight live splits + private archive — owner view")
             if owls_key and not market_board.empty:
                 st.success("Owls Insight is configured. Every live capture automatically appends the raw DraftKings/Circa ticket and handle splits plus the dashboard sharp-money diagnostics to the private Supabase archive. Public pages receive only derived plain-English commentary.")
@@ -933,7 +930,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
                 st.info("OWLS_INSIGHT_API_KEY is not configured. Add the full key to Streamlit Secrets; do not paste it into the site or source code.")
 
             st.markdown("##### Manual market snapshot import")
-            st.caption("Use this only for an authorized supplemental market source. The Odds API handles public sportsbook lines automatically. Owls Insight raw splits use the separate owner-only workflow above. One row = one market snapshot at one timestamp.")
+            st.caption("Use this only for an authorized supplemental market source. Owls Insight handles sportsbook lines automatically and raw splits use the separate owner-only workflow above. One row = one market snapshot at one timestamp.")
             market_upload = st.file_uploader("Market snapshot CSV", type=["csv"], key="admin_market_snapshot_upload")
             if market_upload is not None:
                 try:

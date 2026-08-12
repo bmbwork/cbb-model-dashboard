@@ -164,7 +164,7 @@ def test_v145_migration_keeps_raw_splits_private_and_adds_qualitative_sharp_fiel
 
 def test_app_uses_owls_secret_and_keeps_model_firewall():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.7"' in app
+    assert 'APP_VERSION = "1.4.8"' in app
     assert 'optional_secret("OWLS_INSIGHT_API_KEY")' in app
     assert "OwlsInsightSplitsProvider" in app
     assert "SportsDataIOSplitsProvider" not in app

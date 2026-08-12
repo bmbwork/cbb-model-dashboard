@@ -11,7 +11,7 @@ def test_observed_snapshot_is_not_silently_promoted_to_decision_or_close(board_d
     board, _ = normalize_board(raw)
     snapshots = normalize_market_import(pd.DataFrame([{
         "Slate Date":"2026-01-10", "Game ID":"101", "Snapshot Time UTC":"2026-01-10T19:20:00Z",
-        "Market Type":"spread", "Provider":"the_odds_api", "Source Label":"The Odds API · DraftKings",
+        "Market Type":"spread", "Provider":"owls_insight_odds", "Source Label":"Owls Insight · DraftKings",
         "Home Line":-4.5, "Snapshot Role":"observed",
     }]))
     out = attach_market_to_board(board, snapshots)
@@ -26,8 +26,8 @@ def test_explicit_decision_and_close_roles_remain_separate(board_df):
     raw = board_df.iloc[[0]].copy()
     board, _ = normalize_board(raw)
     snapshots = normalize_market_import(pd.DataFrame([
-        {"Slate Date":"2026-01-10", "Game ID":"101", "Snapshot Time UTC":"2026-01-10T19:20:00Z", "Market Type":"spread", "Provider":"the_odds_api", "Source Label":"The Odds API · DraftKings", "Home Line":-4.5, "Snapshot Role":"decision"},
-        {"Slate Date":"2026-01-10", "Game ID":"101", "Snapshot Time UTC":"2026-01-10T19:55:00Z", "Market Type":"spread", "Provider":"the_odds_api", "Source Label":"The Odds API · DraftKings", "Home Line":-5.5, "Snapshot Role":"close"},
+        {"Slate Date":"2026-01-10", "Game ID":"101", "Snapshot Time UTC":"2026-01-10T19:20:00Z", "Market Type":"spread", "Provider":"owls_insight_odds", "Source Label":"Owls Insight · DraftKings", "Home Line":-4.5, "Snapshot Role":"decision"},
+        {"Slate Date":"2026-01-10", "Game ID":"101", "Snapshot Time UTC":"2026-01-10T19:55:00Z", "Market Type":"spread", "Provider":"owls_insight_odds", "Source Label":"Owls Insight · DraftKings", "Home Line":-5.5, "Snapshot Role":"close"},
     ]))
     row = attach_market_to_board(board, snapshots).iloc[0]
     assert row["_market_decision_home_spread"] == -4.5

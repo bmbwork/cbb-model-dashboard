@@ -35,7 +35,7 @@ class OwlsInsightSplitsProvider:
         self.session.headers.update({
             "Accept": "application/json",
             "Authorization": f"Bearer {key}",
-            "User-Agent": "cbb-market-terminal/1.4.7",
+            "User-Agent": "cbb-market-terminal/1.4.8",
         })
         self.last_rate_headers: dict[str, str] = {}
 

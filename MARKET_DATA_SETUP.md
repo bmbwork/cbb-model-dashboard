@@ -1,53 +1,61 @@
-# Market Data Setup — v1.4.7
+# Market Data Setup — v1.4.8
 
-## Provider roles
+## Provider architecture
 
-- **The Odds API**: actual sportsbook spreads, moneylines, totals, line movement, ATS decision lines, and CLV close lines.
-- **Owls Insight**: current NCAAB DraftKings/Circa ticket and handle splits for owner-only market intelligence.
-- **Supabase private archive**: permanent history of Owls snapshots captured live by this dashboard.
+**Owls Insight is the sole production market-data provider.**
 
-The prediction engine remains independent of all market data.
+- `/api/v1/ncaab/odds`: spreads, moneylines, totals, sportsbook comparison, freshness.
+- `/api/v1/ncaab/splits`: owner-only DraftKings/Circa ticket and handle splits.
+- Supabase: permanent archive for observed, opening, decision, closing, and private split snapshots.
 
-## Secrets
+The V1.1.3B forecast remains independent of all market data.
 
-Keep the existing top-level Streamlit secret:
+## Required secret
 
 ```toml
 OWLS_INSIGHT_API_KEY = "owlsinsight_..."
 ```
 
-Do not place API keys in source code, URLs, CSV exports, or public Supabase tables.
+Optional controls:
 
-## Required migration
+```toml
+OWLS_INSIGHT_ODDS_BOOKS = "pinnacle,circa,draftkings,fanduel,betmgm,caesars,bet365,hardrock,westgate,wynn,south_point,stations"
+OWLS_INSIGHT_REFERENCE_BOOKMAKER = "draftkings"
+```
 
-Run:
+DraftKings remains the default reference sportsbook for continuity with existing ATS decision-line history. When unavailable, the adapter uses a deterministic named-book fallback and preserves the actual sportsbook in `Source Label`.
 
-`supabase/market_terminal_v1_4_7.sql`
+## Supabase
 
-The private `cbb_owner_betting_splits` table remains inaccessible to `anon` and `authenticated` roles. V1.4.7 adds persisted diagnostic columns and an archive index.
+No v1.4.8 migration is required. Keep the existing Market Terminal schema through `supabase/market_terminal_v1_4_7.sql`.
 
-## Admin workflow
+The existing provenance contract remains authoritative:
 
-For the current Eastern Time slate, Admin Studio provides:
+- `observed`: history/line movement only.
+- `open`: explicit opener.
+- `decision`: explicit pre-tip line for ATS grading.
+- `close`: explicit pre-tip line for CLV.
 
-- **Auto-archive stale live splits on Admin Studio refresh** — if the latest private write is at least 15 minutes old, a page rerun captures a new snapshot.
-- **Capture live Owls betting splits now** — force a live capture immediately.
-- **Private Owls split history** — view or download all stored snapshots for the selected slate.
+A normal `observed` row is never promoted to `decision` or `close` automatically.
 
-Past slates do not call Owls historical public-betting backfill. They show only snapshots that were captured live and stored in our own archive.
+## Cross-book diagnostics
 
-## Stored private fields
+For spread rows the Owls adapter stores:
 
-For each sportsbook/market/timestamp, the archive stores raw ticket and handle percentages plus:
+- reference sportsbook line and price,
+- book count,
+- minimum/maximum home spread,
+- spread range and agreement label,
+- broad median home spread,
+- sharp median from Pinnacle/Circa when available,
+- retail median from DraftKings/FanDuel when available.
 
-- Ticket Leader
-- Money Leader
-- Sharp Side
-- Sharp Gap Pts
-- Sharp Strength
-- Sharp Signal
-- Sharp Read
-- Sharp Rule Version
-- Capture Trigger
+These diagnostics are market context only and are not forecasting features.
 
-Public cards do not expose raw percentages.
+## Historical data
+
+V1.4.8 intentionally removes the former external historical-snapshot control from the production Admin workflow. Forward market history is captured permanently in Supabase using explicit roles. Owls MVP historical endpoints can be added later as a dedicated research/backfill workflow after NCAAB coverage is validated; they are not required for routine ATS/CLV provenance.
+
+## Security
+
+Do not place the API key in source code, URLs, CSV exports, or public Supabase tables. The app sends it only in the Owls Insight Bearer authorization header.

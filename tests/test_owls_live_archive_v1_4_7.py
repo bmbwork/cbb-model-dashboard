@@ -144,7 +144,7 @@ def test_v147_migration_keeps_archive_private_and_adds_diagnostics():
 
 def test_admin_removes_historical_split_backfill_and_enables_live_archive():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.7"' in app
+    assert 'APP_VERSION = "1.4.8"' in app
     assert "Historical Owls Insight backfill (MVP)" not in app
     assert "Backfill historical Owls betting splits" not in app
     assert "Capture live Owls betting splits now" in app

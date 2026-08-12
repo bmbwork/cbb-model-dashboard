@@ -6,7 +6,7 @@ from cbb_dashboard.intelligence import market_pulse_html
 def _row(**updates):
     base = {
         "Home Team": "Duke",
-        "_market_source_label": "The Odds API · DraftKings",
+        "_market_source_label": "Owls Insight · DraftKings",
         "_market_latest_snapshot_utc": "2026-03-19T14:55:00Z",
         "_market_current_home_spread": -27.5,
         "_market_opening_home_spread": -27.5,

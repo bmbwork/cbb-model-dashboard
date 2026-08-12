@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _row(**updates):
     base = {
         "Home Team": "Duke",
-        "_market_source_label": "The Odds API · DraftKings",
+        "_market_source_label": "Owls Insight · DraftKings",
         "_market_latest_snapshot_utc": "2026-03-19T14:55:00Z",
         "_market_current_home_spread": -27.5,
         "_market_opening_home_spread": -27.5,
@@ -22,7 +22,7 @@ def _row(**updates):
     return pd.Series(base)
 
 
-def test_odds_api_only_market_pulse_uses_line_movement_and_consensus_not_empty_split_columns():
+def test_owls_odds_market_pulse_uses_line_movement_and_consensus_not_empty_split_columns():
     html = market_pulse_html(_row())
     assert "SPORTSBOOK LINE" in html
     assert "LINE MOVEMENT" in html
@@ -68,4 +68,4 @@ def test_css_styles_market_pulse_children_and_mobile_stack():
 
 def test_app_version_bumped_for_market_pulse_trim_hotfix():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.7"' in app
+    assert 'APP_VERSION = "1.4.8"' in app
