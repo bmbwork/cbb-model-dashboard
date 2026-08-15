@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from cbb_dashboard.best_odds_archive import attach_best_odds_to_board
 from cbb_dashboard.charts import (
     calibration_chart,
     confidence_chart,
@@ -76,7 +77,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.4.8"
+APP_VERSION = "1.5.0"
 
 st.set_page_config(
     page_title="CBB Model | Market Terminal",
@@ -999,6 +1000,11 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             st.success("Owls owner-only split storage: ready")
         except Exception:
             st.warning("Owls owner-only split storage is not ready. Run supabase/market_terminal_v1_4_7.sql once in Supabase SQL Editor.")
+        try:
+            store.check_best_odds_archive_access(admin=False)
+            st.success("Automated Owls best-odds archive public read path: ready")
+        except Exception:
+            st.warning("Automated best-odds archive is not ready. Run supabase/market_archive_v1_5.sql, then configure the GitHub Actions secrets described in ARCHIVE_SETUP_V1_5_0.md.")
         st.caption(f"Published records visible to the app: {len(records)}. Secret values are never rendered here.")
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1006,6 +1012,13 @@ def cached_record_list(_store: SupabaseSlateStore | None) -> list[dict[str, Any]
     if _store is None:
         return []
     return _store.list_records(limit=120)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_best_odds_archive(_store: SupabaseSlateStore | None, start_utc: str, end_utc: str) -> list[dict[str, Any]]:
+    if _store is None or not start_utc or not end_utc:
+        return []
+    return _store.list_best_odds_archive(start_utc=start_utc, end_utc=end_utc, limit=20000)
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1094,6 +1107,21 @@ if record:
                 market_snapshots = snapshots_frame(cached_market_list(store, str(record.get("slate_date") or "")))
                 market_context = context_frame(cached_context_list(store, str(record.get("slate_date") or "")))
                 board = attach_market_to_board(board, market_snapshots, market_context)
+                # The automated archive is independent of model publication. When the
+                # selected board matches an archived Owls event, attach best available
+                # open/current/close quotes without changing model or ATS grading data.
+                try:
+                    start_source = board["_start_dt"] if "_start_dt" in board.columns else board.get("Start Time UTC", pd.Series(dtype=object))
+                    starts = pd.to_datetime(start_source, utc=True, errors="coerce").dropna()
+                    if not starts.empty:
+                        archive_start = (starts.min() - pd.Timedelta(hours=8)).isoformat()
+                        archive_end = (starts.max() + pd.Timedelta(hours=8)).isoformat()
+                        archive_rows = cached_best_odds_archive(store, archive_start, archive_end)
+                        board = attach_best_odds_to_board(board, archive_rows)
+                except Exception:
+                    # v1.5 migration/setup can be completed after code deployment;
+                    # absence of the archive table must never take the public board down.
+                    pass
             except Exception as exc:
                 market_error = str(exc)
     except Exception as exc:

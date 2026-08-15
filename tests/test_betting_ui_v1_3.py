@@ -51,5 +51,5 @@ def test_no_market_line_does_not_create_betting_recommendation(board_df):
 def test_app_version_and_public_page_copy_are_current():
     app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     tree = ast.parse(app)
-    assert 'APP_VERSION = "1.4.8"' in app
+    assert 'APP_VERSION = "1.5.0"' in app
     assert "Open <strong>Why this pick?</strong>" in app

@@ -754,6 +754,88 @@ def market_context_html(row: pd.Series) -> str:
       </div>
     """)
 
+def _archive_book(row: pd.Series, field: str) -> str:
+    value = row.get(field)
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if not text or text.lower() in {"nan", "none"} else text
+
+def _spread_quote(line: float, price: float, book: str) -> str:
+    if not np.isfinite(line):
+        return "—"
+    price_text = f" ({fmt_odds(price)})" if np.isfinite(price) else ""
+    book_text = f" · {esc(book)}" if book else ""
+    return f"{line:+.1f}{price_text}{book_text}"
+
+def best_odds_html(row: pd.Series) -> str:
+    """Best available Owls quotes from our independent scheduled historical archive."""
+    pick = str(row.get("Model Pick") or "")
+    home = str(row.get("Home Team") or "")
+    side = "home" if pick == home else "away"
+
+    current_spread = _num(row, f"_best_current_spread_{side}_line")
+    current_spread_price = _num(row, f"_best_current_spread_{side}_price")
+    current_spread_book = _archive_book(row, f"_best_current_spread_{side}_book_title")
+    current_ml = _num(row, f"_best_current_moneyline_{side}_price")
+    current_ml_book = _archive_book(row, f"_best_current_moneyline_{side}_book_title")
+    open_spread = _num(row, f"_best_open_spread_{side}_line")
+    open_book = _archive_book(row, f"_best_open_spread_{side}_book_title")
+    close_spread = _num(row, f"_best_close_spread_{side}_line")
+    close_book = _archive_book(row, f"_best_close_spread_{side}_book_title")
+    updated = row.get("_best_current_spread_captured_at_utc") or row.get("_best_current_moneyline_captured_at_utc")
+
+    if not any(np.isfinite(x) for x in [current_spread, current_ml, open_spread, close_spread]):
+        return ""
+
+    spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book)
+    ml_text = f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if np.isfinite(current_ml) else "—"
+    if np.isfinite(open_spread):
+        open_text = f"{open_spread:+.1f}" + (f" · {esc(open_book)}" if open_book else "")
+    else:
+        open_text = "—"
+    move = current_spread - open_spread if np.isfinite(current_spread) and np.isfinite(open_spread) else float("nan")
+    if np.isfinite(move):
+        if abs(move) < 0.05:
+            move_text = "0.0 pts"
+        elif move > 0:
+            move_text = f"+{move:.1f} pts better"
+        else:
+            move_text = f"{move:.1f} pts worse"
+    else:
+        move_text = "—"
+    close_text = f"{close_spread:+.1f}" + (f" · {esc(close_book)}" if close_book else "") if np.isfinite(close_spread) else "Pending"
+
+    decision, _ = decision_home_spread(row)
+    selected_decision = selected_team_spread(row, decision)
+    clv_text = "Pending"
+    if np.isfinite(selected_decision) and np.isfinite(close_spread):
+        clv = selected_decision - close_spread
+        if abs(clv) < 0.05:
+            clv_text = "0.0 pts"
+        elif clv > 0:
+            clv_text = f"+{clv:.1f} pts"
+        else:
+            clv_text = f"{clv:.1f} pts"
+
+    updated_text = ""
+    stamp = pd.to_datetime(updated, utc=True, errors="coerce")
+    if pd.notna(stamp):
+        updated_text = f" · archived {stamp.strftime('%b %d %H:%M UTC')}"
+
+    return compact_html(f"""
+      <div class="market-pulse">
+        <div class="market-pulse-head"><span>BEST SPORTSBOOK ODDS</span><strong>{esc(pick)}{esc(updated_text)}</strong></div>
+        <div class="market-pulse-grid">
+          <div class="market-pulse-stat"><span>Best spread now</span><strong>{spread_text}</strong><em>best point first, then best price</em></div>
+          <div class="market-pulse-stat"><span>Best moneyline now</span><strong>{ml_text}</strong><em>highest available American price</em></div>
+          <div class="market-pulse-stat"><span>Tracked open</span><strong>{open_text}</strong><em>first quote our archive observed</em></div>
+          <div class="market-pulse-stat"><span>Best-line move</span><strong>{esc(move_text)}</strong><em>current best spread vs tracked open</em></div>
+          <div class="market-pulse-stat"><span>Tracked close</span><strong>{close_text}</strong><em>last captured pregame market</em></div>
+          <div class="market-pulse-stat"><span>Best-market CLV</span><strong>{esc(clv_text)}</strong><em>saved decision line vs tracked best close</em></div>
+        </div>
+      </div>
+    """)
 def betting_snapshot_html(row: pd.Series) -> str:
     metrics = "".join([
         _profile_metric("Model spread", fmt_spread(row.get("Fair Spread")), "projected point spread", "The point spread implied by the model's projected score. Negative means the picked team is favored."),
@@ -834,6 +916,7 @@ def game_card_html(row: pd.Series) -> str:
         </div>
         <div class="scoreboard">{team_row(away, row.get('Projected Away Score'))}{team_row(home, row.get('Projected Home Score'))}</div>
         <div class="chip-row">{''.join(chips)}</div>
+        {best_odds_html(row)}
         {market_pulse_html(row)}
         {betting_snapshot_html(row)}
         {dossier_html(row)}

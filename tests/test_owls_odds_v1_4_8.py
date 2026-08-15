@@ -183,7 +183,7 @@ def test_swapped_provider_designation_translates_back_to_board_home():
 def test_v148_app_and_secrets_are_owls_only_for_production_market_data():
     app = (ROOT / "app.py").read_text()
     secrets = (ROOT / "STREAMLIT_SECRETS_TEMPLATE.toml").read_text()
-    assert 'APP_VERSION = "1.4.8"' in app
+    assert 'APP_VERSION = "1.5.0"' in app
     assert "Refresh Owls sportsbook lines" in app
     assert "OwlsInsightOddsProvider" in app
     assert "THE_ODDS_API_KEY" not in app

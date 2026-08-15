@@ -14,7 +14,6 @@ from cbb_dashboard.market import (
     normalize_market_import,
     normalize_team_name,
 )
-from cbb_dashboard.market_provider import SportradarConfig, SportradarMarketProvider
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -104,20 +103,8 @@ def test_market_pulse_and_card_do_not_modify_model_prediction(board_df):
     assert "MARKET PULSE" in game_card_html(out.iloc[0]).upper()
 
 
-def test_provider_urls_and_config_are_sportradar_ready():
-    provider = SportradarMarketProvider(SportradarConfig(api_key="x", ncaamb_api_key="y", odds_api_key="z"))
-    seen = []
-    provider._get = lambda url, key: seen.append((url,key)) or {}  # type: ignore[method-assign]
-    provider.daily_schedule("2026-11-14")
-    provider.betting_splits("game-123")
-    provider.daily_odds_mappings("2026-11-14")
-    assert "/ncaamb/production/v8/en/games/2026/11/14/schedule.json" in seen[0][0]
-    assert "/betting-splits/v3/production/ncaamb/en/game/game-123" in seen[1][0]
-    assert "/mapping/production/v2/en/sports/sr:sport:2/schedules/2026-11-14/" in seen[2][0]
-
-
 def test_market_schema_is_public_read_server_write_only():
-    sql = (ROOT / "supabase" / "market_terminal_v1_4.sql").read_text().lower()
+    sql = (ROOT / "supabase" / "market_terminal_v1_4_2.sql").read_text().lower()
     assert "cbb_market_snapshots" in sql and "cbb_game_context" in sql
     assert "enable row level security" in sql
     assert "grant select" in sql
@@ -132,60 +119,6 @@ def test_app_has_market_terminal_and_admin_refresh_but_no_public_secret():
     assert "THE_ODDS_API_KEY" not in source
     assert "st.write(action_key" not in source
     assert "raw bet" not in source.lower()
-
-def test_sportradar_split_parser_accepts_common_market_outcome_shape(board_df):
-    provider = SportradarMarketProvider(SportradarConfig(api_key="x"))
-    row = board_df.iloc[0].copy()
-    payload = {
-        "markets": [
-            {
-                "market": "spread",
-                "outcomes": [
-                    {"name":"Home Tech", "bet_percentage":0.35, "stake_percentage":0.58, "spread":-4.5},
-                    {"name":"Away State", "bet_percentage":0.65, "stake_percentage":0.42, "spread":4.5},
-                ],
-            },
-            {
-                "market": "moneyLine",
-                "outcomes": [
-                    {"name":"Home Tech", "ticket_percentage":45, "money_percentage":60},
-                    {"name":"Away State", "ticket_percentage":55, "money_percentage":40},
-                ],
-            },
-        ]
-    }
-    parsed = provider.parse_betting_splits(payload, row, "gid")
-    assert set(parsed["Market Type"]) == {"spread", "moneyline"}
-    spread = parsed[parsed["Market Type"].eq("spread")].iloc[0]
-    assert spread["Home Ticket %"] == 35
-    assert abs(float(spread["Home Money %"]) - 58) < 1e-9
-    assert spread["Away Ticket %"] == 65
-
-
-def test_current_rankings_do_not_leak_into_old_slate():
-    payload = {
-        "effective_time":"2026-02-01T12:00:00Z",
-        "rankings":[{"rank":1,"market":"Home","name":"Tech"}],
-    }
-    assert SportradarMarketProvider._ranking_map(payload, "2026-01-10") == {}
-    assert SportradarMarketProvider._ranking_map(payload, "2026-02-02")
-
-def test_odds_comparison_book_disagreement_summary():
-    payload = {
-        "markets":[{
-            "name":"spread",
-            "books":[
-                {"name":"Consensus","outcomes":[{"type":"home","spread":-4.0,"open_spread":-3.0},{"type":"away","spread":4.0,"open_spread":3.0}]},
-                {"name":"Book A","outcomes":[{"type":"home","spread":-3.5},{"type":"away","spread":3.5}]},
-                {"name":"Book B","outcomes":[{"type":"home","spread":-5.5},{"type":"away","spread":5.5}]},
-            ],
-        }]
-    }
-    odds = SportradarMarketProvider._consensus_odds(payload)
-    assert odds["home_spread"] == -4.0
-    assert odds["book_count"] == 3
-    assert odds["book_spread_range"] == 2.0
-    assert odds["book_agreement"] == "wide"
 
 def test_post_start_market_snapshot_cannot_replace_pregame_state(board_df):
     raw = board_df.iloc[[0]].copy()

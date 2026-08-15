@@ -6,9 +6,12 @@ def test_requirements_include_authlib():
     assert 'authlib>=' in req
 
 
-def test_odds_api_secrets_are_top_level_in_template():
-    text = Path('STREAMLIT_SECRETS_TEMPLATE.toml').read_text()
+
+
+def test_owls_secret_is_top_level_in_template():
+    text = Path("STREAMLIT_SECRETS_TEMPLATE.toml").read_text()
     lines = text.splitlines()
-    auth_pos = next(i for i, line in enumerate(lines) if line.strip() == '[auth]')
-    odds_pos = next(i for i, line in enumerate(lines) if line.startswith('THE_ODDS_API_KEY'))
-    assert odds_pos < auth_pos
+    auth_pos = next(i for i, line in enumerate(lines) if line.strip() == "[auth]")
+    owls_pos = next(i for i, line in enumerate(lines) if line.startswith("OWLS_INSIGHT_API_KEY"))
+    assert owls_pos < auth_pos
+    assert "THE_ODDS_API_KEY" not in text

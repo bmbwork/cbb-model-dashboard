@@ -38,6 +38,8 @@ class SupabaseSlateStore:
     MARKET_TABLE = "cbb_market_snapshots"
     CONTEXT_TABLE = "cbb_game_context"
     OWNER_SPLITS_TABLE = "cbb_owner_betting_splits"
+    BEST_ODDS_ARCHIVE_TABLE = "cbb_owls_best_odds_archive"
+    BEST_ODDS_CARD_VIEW = "cbb_owls_best_odds_card_state"
 
     def __init__(self, config: StoreConfig):
         self.config = config
@@ -171,6 +173,23 @@ class SupabaseSlateStore:
                 raise StorageOperationError(f"Public betting-note publish failed for {game_id}: {type(exc).__name__}") from exc
         return count
 
+    def check_best_odds_archive_access(self, admin: bool = False) -> None:
+        client = self._admin_client() if admin else self._public
+        try:
+            client.table(self.BEST_ODDS_CARD_VIEW).select("archive_event_key,market_type,captured_at_utc").limit(1).execute()
+        except Exception as exc:
+            raise StorageOperationError(f"Supabase best-odds archive `{self.BEST_ODDS_ARCHIVE_TABLE}` is not ready or not accessible: {type(exc).__name__}") from exc
+    def list_best_odds_archive(self, start_utc: str | None = None, end_utc: str | None = None, limit: int = 20000) -> list[dict[str, Any]]:
+        try:
+            query = self._public.table(self.BEST_ODDS_CARD_VIEW).select("*")
+            if start_utc:
+                query = query.gte("commence_time_utc", start_utc)
+            if end_utc:
+                query = query.lte("commence_time_utc", end_utc)
+            resp = query.order("captured_at_utc", desc=False).limit(int(limit)).execute()
+            return [dict(x) for x in self._data(resp)]
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read automated best-odds archive: {type(exc).__name__}") from exc
     def list_market_snapshots(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
         try:
             query = self._public.table(self.MARKET_TABLE).select("*")

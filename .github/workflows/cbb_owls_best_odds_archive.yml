@@ -1,0 +1,59 @@
+name: CBB Owls Best Odds Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Capture mode
+        required: true
+        default: hourly
+        type: choice
+        options:
+          - hourly
+          - close
+  schedule:
+    # Full archive snapshot once per hour, deliberately off minute 0.
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cbb-owls-best-odds-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: github.event_name == 'workflow_dispatch' || vars.CBB_ODDS_ARCHIVE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Select capture mode
+        id: capture_mode
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=hourly" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Archive Owls best odds
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          OWLS_INSIGHT_API_KEY: ${{ secrets.OWLS_INSIGHT_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/archive_owls_best_odds.py --mode "${{ steps.capture_mode.outputs.mode }}"

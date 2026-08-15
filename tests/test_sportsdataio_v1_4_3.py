@@ -80,7 +80,7 @@ def test_line_and_split_providers_merge_without_overwriting_each_other(board_df)
     html = market_pulse_html(row)
     assert "PUBLIC BETS" not in html
     assert "PUBLIC MONEY" not in html
-    assert "Lines: The Odds API" in html
+    assert "Lines: Owls Insight" in html
     assert "Splits: SportsDataIO" not in html
 
 

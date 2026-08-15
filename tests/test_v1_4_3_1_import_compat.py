@@ -14,4 +14,4 @@ def test_app_has_import_compatibility_guard():
     text = (root / 'app.py').read_text()
     assert 'try:\n    from cbb_dashboard.intelligence import market_interpretation_text' in text
     assert 'except ImportError:' in text
-    assert 'APP_VERSION = "1.4.3.1"' in text
+    assert 'APP_VERSION = "1.5.0"' in text

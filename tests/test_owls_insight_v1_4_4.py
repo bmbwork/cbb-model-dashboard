@@ -107,7 +107,7 @@ def test_betting_context_enters_reasons_risks_without_numbers():
 
 
 def test_v144_migration_keeps_raw_splits_private():
-    sql = (ROOT / "supabase" / "market_terminal_v1_4_4.sql").read_text().lower()
+    sql = (ROOT / "supabase" / "market_terminal_v1_4_5.sql").read_text().lower()
     assert "create table if not exists public.cbb_owner_betting_splits" in sql
     assert "revoke all on table public.cbb_owner_betting_splits from anon, authenticated" in sql
     assert "grant select on table public.cbb_owner_betting_splits to anon" not in sql
@@ -117,7 +117,7 @@ def test_v144_migration_keeps_raw_splits_private():
 
 def test_app_uses_owls_secret_and_keeps_model_firewall():
     app = (ROOT / "app.py").read_text()
-    assert 'APP_VERSION = "1.4.8"' in app
+    assert 'APP_VERSION = "1.5.0"' in app
     assert 'optional_secret("OWLS_INSIGHT_API_KEY")' in app
     assert "OwlsInsightSplitsProvider" in app
     assert "SportsDataIOSplitsProvider" not in app

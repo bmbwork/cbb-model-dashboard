@@ -18,8 +18,11 @@ def test_admin_exposes_owls_refresh_and_owner_guard():
     assert "derive_public_betting_notes" in app
 
 
-def test_release_keeps_the_odds_api_as_line_provider():
+
+
+def test_release_uses_owls_as_line_provider():
     app = (ROOT / "app.py").read_text()
-    assert "Refresh The Odds API market lines" in app
+    assert "Refresh Owls sportsbook lines" in app
     assert "Owls Insight live splits" in app
-    assert "SPORTSBOOK LINE" not in app or "SPORTSBOOK LINE" in (ROOT / "cbb_dashboard" / "intelligence.py").read_text()
+    assert "THE_ODDS_API_KEY" not in app
+    assert "The Odds API" not in app
