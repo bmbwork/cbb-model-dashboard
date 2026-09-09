@@ -5,6 +5,14 @@ from datetime import datetime, timezone
 import hashlib
 from typing import Any
 
+from stat_factory_access import require_stat_factory_access
+
+
+# This module is imported during dashboard bootstrap, before any slate or market
+# data is rendered. The gate is opt-in via Streamlit secrets so merging the code
+# does not interrupt the current public deployment until activation is ready.
+require_stat_factory_access("cbb")
+
 
 @dataclass(frozen=True)
 class AdminAccess:
