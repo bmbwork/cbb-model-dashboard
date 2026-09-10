@@ -96,6 +96,39 @@ class SupabaseSlateStore:
         except Exception as exc:
             raise StorageOperationError(f"Could not read owner-only betting splits: {type(exc).__name__}") from exc
 
+    def list_card_split_projection(self, slate_date: str, limit: int = 5000) -> list[dict[str, Any]]:
+        """Return only the betting-split fields intentionally rendered on public cards.
+
+        The raw Owl split table remains service-role-only.  Streamlit performs this
+        narrow server-side projection with the secret key, strips line/sharp fields,
+        and forces every projected row to the observational role so it can never
+        become an ATS decision/open/close source.
+        """
+        client = self._admin_client()
+        columns = ",".join([
+            "slate_date", "game_id", "provider", "provider_game_id",
+            "market_type", "snapshot_time_utc", "source_label", "sportsbook_scope",
+            "home_ticket_pct", "away_ticket_pct", "home_money_pct", "away_money_pct",
+            "over_ticket_pct", "under_ticket_pct", "over_money_pct", "under_money_pct",
+        ])
+        try:
+            resp = (
+                client.table(self.OWNER_SPLITS_TABLE)
+                .select(columns)
+                .eq("slate_date", str(slate_date))
+                .order("snapshot_time_utc", desc=True)
+                .limit(int(limit))
+                .execute()
+            )
+            safe_rows: list[dict[str, Any]] = []
+            for item in self._data(resp):
+                row = dict(item)
+                row["snapshot_role"] = "observed"
+                safe_rows.append(row)
+            return safe_rows
+        except Exception as exc:
+            raise StorageOperationError(f"Could not read card-safe betting splits: {type(exc).__name__}") from exc
+
     def latest_owner_split_capture_time(self, slate_date: str) -> str | None:
         client = self._admin_client()
         try:

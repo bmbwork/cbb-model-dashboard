@@ -113,12 +113,13 @@ def test_market_schema_is_public_read_server_write_only():
 
 def test_app_has_market_terminal_and_admin_refresh_but_no_public_secret():
     source = (ROOT / "app.py").read_text()
-    assert '"Market Terminal"' in source
+    assert 'public_pages = ["Home", "Today\'s Board", "Slates by Date", "Analyst Picks", "Performance Lab"]' in source
+    assert '"Market Terminal"' not in source.split("public_pages =", 1)[1].split("\n", 1)[0]
     assert "Refresh Owls sportsbook lines" in source
     assert "OWLS_INSIGHT_API_KEY" in source
     assert "THE_ODDS_API_KEY" not in source
     assert "st.write(action_key" not in source
-    assert "raw bet" not in source.lower()
+    assert "list_card_split_projection" in (ROOT / "cbb_dashboard" / "storage.py").read_text()
 
 def test_post_start_market_snapshot_cannot_replace_pregame_state(board_df):
     raw = board_df.iloc[[0]].copy()

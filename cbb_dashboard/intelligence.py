@@ -768,9 +768,87 @@ def _spread_quote(line: float, price: float, book: str) -> str:
     book_text = f" · {esc(book)}" if book else ""
     return f"{line:+.1f}{price_text}{book_text}"
 
+def _public_split_text(money: Any, tickets: Any) -> str:
+    m = pd.to_numeric(money, errors="coerce")
+    t = pd.to_numeric(tickets, errors="coerce")
+    if pd.isna(m) and pd.isna(t):
+        return "Not offered"
+    if pd.notna(m) and pd.notna(t) and float(m) == 0.0 and float(t) == 0.0:
+        return "Not offered"
+    if pd.isna(m):
+        money_text = "— money"
+    elif float(m) == 0.0 and pd.notna(t) and float(t) > 0:
+        money_text = "<1% money"
+    elif float(m) == 100.0 and pd.notna(t) and float(t) < 100:
+        money_text = ">99% money"
+    else:
+        money_text = f"{float(m):.0f}% money"
+    ticket_text = "— tickets" if pd.isna(t) else f"{float(t):.0f}% tickets"
+    return f"{money_text} · {ticket_text}"
+
+
+def _opposite_pct(value: Any) -> float:
+    number = pd.to_numeric(value, errors="coerce")
+    if pd.isna(number):
+        return float("nan")
+    return max(0.0, min(100.0, 100.0 - float(number)))
+
+
+def betting_splits_html(row: pd.Series) -> str:
+    """Public numeric Owl splits, shown only when a validated snapshot exists."""
+    pick = str(row.get("Model Pick") or "Model pick")
+    home = str(row.get("Home Team") or "")
+    side = "home" if pick == home else "away"
+
+    spread_money = row.get(f"_market_{side}_money_pct")
+    spread_tickets = row.get(f"_market_{side}_ticket_pct")
+
+    ml_home_money = row.get("_market_ml_home_money_pct")
+    ml_home_tickets = row.get("_market_ml_home_ticket_pct")
+    if side == "home":
+        ml_money, ml_tickets = ml_home_money, ml_home_tickets
+    else:
+        # Owls/provider payloads can use 0/0 as an unavailable sentinel.  Do
+        # not complement that sentinel into a fabricated 100/100 away split.
+        ml_home_money_n = pd.to_numeric(ml_home_money, errors="coerce")
+        ml_home_tickets_n = pd.to_numeric(ml_home_tickets, errors="coerce")
+        if (
+            pd.notna(ml_home_money_n)
+            and pd.notna(ml_home_tickets_n)
+            and float(ml_home_money_n) == 0.0
+            and float(ml_home_tickets_n) == 0.0
+        ):
+            ml_money = ml_tickets = float("nan")
+        else:
+            ml_money, ml_tickets = _opposite_pct(ml_home_money), _opposite_pct(ml_home_tickets)
+
+    total_money = row.get("_market_total_over_money_pct")
+    total_tickets = row.get("_market_total_over_ticket_pct")
+    spread_text = _public_split_text(spread_money, spread_tickets)
+    ml_text = _public_split_text(ml_money, ml_tickets)
+    total_text = _public_split_text(total_money, total_tickets)
+
+    source = str(row.get("_market_split_source_label") or "Owls Insight").strip()
+    stamp = str(row.get("_market_split_latest_snapshot_utc") or "").strip()
+    if len(stamp) >= 16:
+        source = f"{source} · {stamp[11:16]} UTC"
+    available = sum(value != "Not offered" for value in (spread_text, ml_text, total_text))
+    state = "live" if available else "empty"
+    return compact_html(f"""
+      <div class="split-strip {state}">
+        <div class="split-strip-head"><span>BETTING SPLITS</span><em>{esc(source) if available else 'No validated split snapshot for this matchup'}</em></div>
+        <div class="split-strip-grid">
+          <div class="split-stat"><span>{esc(pick)} spread</span><strong>{esc(spread_text)}</strong><small>money = dollars · tickets = bet count</small></div>
+          <div class="split-stat"><span>{esc(pick)} moneyline</span><strong>{esc(ml_text)}</strong><small>straight-up betting split</small></div>
+          <div class="split-stat"><span>Game total · Over</span><strong>{esc(total_text)}</strong><small>over-side betting split</small></div>
+        </div>
+      </div>
+    """)
+
+
 def best_odds_html(row: pd.Series) -> str:
-    """Best available Owls quotes from our independent scheduled historical archive."""
-    pick = str(row.get("Model Pick") or "")
+    """Compact model-v-market and open/current/close strip for the model-pick side."""
+    pick = str(row.get("Model Pick") or "Model pick")
     home = str(row.get("Home Team") or "")
     side = "home" if pick == home else "away"
 
@@ -783,68 +861,58 @@ def best_odds_html(row: pd.Series) -> str:
     open_book = _archive_book(row, f"_best_open_spread_{side}_book_title")
     close_spread = _num(row, f"_best_close_spread_{side}_line")
     close_book = _archive_book(row, f"_best_close_spread_{side}_book_title")
-    updated = row.get("_best_current_spread_captured_at_utc") or row.get("_best_current_moneyline_captured_at_utc")
 
-    if not any(np.isfinite(x) for x in [current_spread, current_ml, open_spread, close_spread]):
-        return ""
+    fair = _num(row, "Fair Spread")
+    fair_text = fmt_spread(fair, pick) if np.isfinite(fair) else "—"
+    spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book) if np.isfinite(current_spread) else "Not offered"
+    ml_text = (f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if current_ml_book else fmt_odds(current_ml)) if np.isfinite(current_ml) else "Not offered"
+    implied = fmt_odds(row.get("Fair Moneyline"))
 
-    spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book)
-    ml_text = f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if np.isfinite(current_ml) else "—"
     if np.isfinite(open_spread):
         open_text = f"{open_spread:+.1f}" + (f" · {esc(open_book)}" if open_book else "")
     else:
-        open_text = "—"
-    move = current_spread - open_spread if np.isfinite(current_spread) and np.isfinite(open_spread) else float("nan")
-    if np.isfinite(move):
-        if abs(move) < 0.05:
-            move_text = "0.0 pts"
-        elif move > 0:
-            move_text = f"+{move:.1f} pts better"
-        else:
-            move_text = f"{move:.1f} pts worse"
-    else:
-        move_text = "—"
+        open_text = "Not tracked"
+    current_text = f"{current_spread:+.1f}" if np.isfinite(current_spread) else "Not offered"
     close_text = f"{close_spread:+.1f}" + (f" · {esc(close_book)}" if close_book else "") if np.isfinite(close_spread) else "Pending"
+
+    move = current_spread - open_spread if np.isfinite(current_spread) and np.isfinite(open_spread) else float("nan")
+    if not np.isfinite(move):
+        signal, tone = "Movement unavailable", "muted"
+    elif abs(move) < 0.05:
+        signal, tone = "Market flat on model pick", "muted"
+    elif move < 0:
+        signal, tone = f"Market moved {abs(move):.1f} pts toward {pick}", "orange"
+    else:
+        signal, tone = f"Market moved {abs(move):.1f} pts away from {pick}", "teal"
 
     decision, _ = decision_home_spread(row)
     selected_decision = selected_team_spread(row, decision)
     clv_text = "Pending"
     if np.isfinite(selected_decision) and np.isfinite(close_spread):
         clv = selected_decision - close_spread
-        if abs(clv) < 0.05:
-            clv_text = "0.0 pts"
-        elif clv > 0:
-            clv_text = f"+{clv:.1f} pts"
-        else:
-            clv_text = f"{clv:.1f} pts"
+        clv_text = f"{clv:+.1f} pts" if abs(clv) >= 0.05 else "0.0 pts"
 
-    updated_text = ""
-    stamp = pd.to_datetime(updated, utc=True, errors="coerce")
-    if pd.notna(stamp):
-        updated_text = f" · archived {stamp.strftime('%b %d %H:%M UTC')}"
-
+    primary = "".join([
+        f'<div class="primary-stat model"><span>MODEL SPREAD</span><strong>{esc(fair_text)}</strong><small>independent forecast line</small></div>',
+        f'<div class="primary-stat market"><span>BEST SPREAD NOW</span><strong>{spread_text}</strong><small>best point first, then price</small></div>',
+        f'<div class="primary-stat market"><span>BEST ML NOW</span><strong>{ml_text}</strong><small>best tracked sportsbook price</small></div>',
+        f'<div class="primary-stat model"><span>MODEL-IMPLIED ODDS</span><strong>{esc(implied)}</strong><small>not a sportsbook quote</small></div>',
+    ])
     return compact_html(f"""
-      <div class="market-pulse">
-        <div class="market-pulse-head"><span>BEST SPORTSBOOK ODDS</span><strong>{esc(pick)}{esc(updated_text)}</strong></div>
-        <div class="market-pulse-grid">
-          <div class="market-pulse-stat"><span>Best spread now</span><strong>{spread_text}</strong><em>best point first, then best price</em></div>
-          <div class="market-pulse-stat"><span>Best moneyline now</span><strong>{ml_text}</strong><em>highest available American price</em></div>
-          <div class="market-pulse-stat"><span>Tracked open</span><strong>{open_text}</strong><em>first quote our archive observed</em></div>
-          <div class="market-pulse-stat"><span>Best-line move</span><strong>{esc(move_text)}</strong><em>current best spread vs tracked open</em></div>
-          <div class="market-pulse-stat"><span>Tracked close</span><strong>{close_text}</strong><em>last captured pregame market</em></div>
-          <div class="market-pulse-stat"><span>Best-market CLV</span><strong>{esc(clv_text)}</strong><em>saved decision line vs tracked best close</em></div>
-        </div>
+      <div class="primary-bet-grid">{primary}</div>
+      <div class="market-status {tone}">
+        <span class="market-dot"></span><strong>MARKET PULSE · {esc(signal)}</strong>
+        <span>Open {open_text} · Current {current_text} · Close {close_text} · CLV {esc(clv_text)}</span>
       </div>
     """)
+
 def betting_snapshot_html(row: pd.Series) -> str:
     metrics = "".join([
-        _profile_metric("Model spread", fmt_spread(row.get("Fair Spread")), "projected point spread", "The point spread implied by the model's projected score. Negative means the picked team is favored."),
-        _profile_metric("Model-implied odds", fmt_odds(row.get("Fair Moneyline")), "not a sportsbook quote", "American odds implied by the model's win probability. This is not a sportsbook price."),
-        _profile_metric("Projected combined points", fmt_num(row.get("Projected Total"), 1), "both teams combined", "The model's expected total points scored by both teams."),
+        _profile_metric("Projected combined points", fmt_num(row.get("Projected Total"), 1), "model total", "The model's expected total points scored by both teams."),
         _profile_metric("Projected game speed", fmt_num(row.get("Expected Pace"), 1), "estimated possessions", "Estimated number of possessions in the game. More possessions usually means a faster game."),
         _profile_metric("Data confidence", f"{fmt_num(row.get('Data Quality'),0)}/100", "higher is better", "How complete and reliable the model inputs are for this matchup. Higher is better."),
     ])
-    return compact_html(f'<div class="betting-snapshot">{metrics}</div>')
+    return compact_html(f'<div class="betting-snapshot compact">{metrics}</div>')
 
 def dossier_html(row: pd.Series) -> str:
     availability = "Verified" if _bool(row.get("Availability Verified", False)) else "Not verified"
@@ -855,13 +923,20 @@ def dossier_html(row: pd.Series) -> str:
         <div class="dossier-context" title="How uncertain the projected winning margin is. Bigger numbers mean a more unpredictable game."><span>Typical margin swing</span><strong>{esc(margin_swing_text(row))}</strong></div>
         <div class="dossier-context" title="Whether the model has verified player availability information for this matchup."><span>Player status</span><strong>{esc(availability)}</strong></div>
         <div class="dossier-context"><span>Location</span><strong>{esc(site)}</strong></div>
-        <div class="dossier-context" title="How complete and reliable the model inputs are. Higher is better."><span>Data confidence</span><strong>{fmt_num(row.get('Data Quality'),0)}/100</strong></div>
       </div>
     """)
     return compact_html(f"""
       <details class="intel-dossier">
-        <summary><span>Why this pick?</span><span>Reasons / risks / team comparison / sportsbook context ＋</span></summary>
-        <div class="dossier-body">{evidence_html(row)}{betting_market_note_html(row)}{team_snapshot_html(row)}{matchup_battle_html(row)}{market_pulse_html(row)}{market_context_html(row)}{context}{metric_glossary_html()}</div>
+        <summary><span>Why this pick?</span><span>Model evidence · matchup · sportsbook context ＋</span></summary>
+        <div class="dossier-body">
+          {evidence_html(row)}
+          {betting_market_note_html(row)}
+          {team_snapshot_html(row)}
+          {matchup_battle_html(row)}
+          {market_context_html(row)}
+          {context}
+          {metric_glossary_html()}
+        </div>
       </details>
     """)
 
@@ -871,7 +946,8 @@ def game_card_html(row: pd.Series) -> str:
     pick = str(row.get("Model Pick") or "")
     rank_value = _num(row, "Rank", "_rank")
     rank = int(rank_value) if np.isfinite(rank_value) else 0
-    prob = row.get("Win Probability")
+    prob = pd.to_numeric(row.get("Win Probability"), errors="coerce")
+    prob = float(prob) if pd.notna(prob) else float("nan")
     neutral = _bool(row.get("Neutral Site", False))
     d1 = _bool(row.get("D1 Evaluation Eligible", False))
     verified = _bool(row.get("Availability Verified", False))
@@ -879,45 +955,56 @@ def game_card_html(row: pd.Series) -> str:
 
     start = row.get("_start_dt")
     if isinstance(start, pd.Timestamp) and pd.notna(start):
-        start_text = start.strftime("%b %d • %H:%M UTC")
+        start_text = start.strftime("%b %d · %H:%M UTC")
     else:
         start_text = "Start time unavailable"
 
+    home_prob = prob if pick == home else (1.0 - prob if np.isfinite(prob) else float("nan"))
+    away_prob = prob if pick == away else (1.0 - prob if np.isfinite(prob) else float("nan"))
+    home_rank = _num(row, "Home Rank")
+    away_rank = _num(row, "Away Rank")
+
+    def ap_label(value: float) -> str:
+        return f'<span class="ap-tag">AP #{int(value)}</span>' if np.isfinite(value) and 1 <= value <= 25 else ""
+
+    def team_row(name: str, score: Any, chance: float, ap_rank: float) -> str:
+        tag = '<span class="team-tag">ML PICK</span>' if name == pick else ""
+        return (
+            f'<div class="team-row {"pick" if name == pick else ""}">'
+            f'<div class="team-name">{ap_label(ap_rank)}{esc(name)}{tag}</div>'
+            f'<div class="team-projection"><span>PROJ</span><strong>{fmt_num(score,1)}</strong></div>'
+            f'<div class="team-chance"><span>WIN</span><strong>{fmt_pct(chance)}</strong></div>'
+            f'</div>'
+        )
+
     chips = [
-        f'<span class="chip {"teal" if d1 else "gold"}">{"Both teams Division I" if d1 else "Other matchup"}</span>',
-        f'<span class="chip projection">{esc(projection_tier(row))}</span>',
+        f'<span class="chip {"teal" if d1 else "gold"}">{"Division I matchup" if d1 else "Other matchup"}</span>',
+        f'<span class="chip {"green" if verified else "gold"}">{"Player status verified" if verified else "Player status not verified"}</span>',
     ]
     if neutral:
-        chips.append('<span class="chip orange">Neutral court</span>')
-    chips.append(f'<span class="chip {"green" if verified else "gold"}">{"Player status verified" if verified else "Player status not verified"}</span>')
-    chips.append(f'<span class="chip champion">{esc(model_role(row))}</span>')
-    context_chips = game_context_chips_html(row)
-    if context_chips:
-        chips.append(context_chips)
-    decision, _ = decision_home_spread(row)
-    selected_decision = selected_team_spread(row, decision)
-    gap = model_market_gap(row)
-    if np.isfinite(selected_decision):
-        gap_text = f" · differs {abs(gap):.1f} pts" if np.isfinite(gap) and abs(gap) >= .05 else ""
-        chips.append(f'<span class="chip market">Sportsbook {selected_decision:+.1f}{esc(gap_text)}</span>')
-
-    def team_row(name: str, score: Any) -> str:
-        tag = '<span class="team-tag">MODEL PICK</span>' if name == pick else ""
-        return f'<div class="team-row {"pick" if name == pick else ""}"><div class="team-name">{esc(name)}{tag}</div><div class="score">{fmt_num(score,1)}</div></div>'
+        chips.insert(1, '<span class="chip orange">Neutral court</span>')
 
     result = _result_banner(row)
+    fair = _num(row, "Fair Spread")
+    fair_text = fmt_spread(fair, pick) if np.isfinite(fair) else "—"
 
     return compact_html(f"""
       <div class="game-card {cls}">
         {result}
-        <div class="game-head">
-          <div><span class="rank-pill">#{rank}</span><div class="game-time">{esc(start_text)} · {"Neutral court" if neutral else "Campus / scheduled site"}</div></div>
-          <div><div class="prob">{fmt_pct(prob)}</div><div class="prob-label">Chance model pick wins</div><div class="model-pick">{esc(pick)} {fmt_spread(row.get('Fair Spread'))}</div></div>
+        <div class="game-head polished">
+          <div class="game-meta"><span class="rank-pill">#{rank}</span><div class="game-time">{esc(start_text)} · {"Neutral court" if neutral else "Scheduled site"}</div></div>
+          <div class="pick-hero">
+            <div class="pick-kicker">ML PICK</div>
+            <div class="pick-team">{esc(pick)}</div>
+            <div class="prob">{fmt_pct(prob)}</div>
+            <div class="prob-label">Chance model pick wins</div>
+            <div class="model-pick">Model spread {esc(fair_text)}</div>
+          </div>
         </div>
-        <div class="scoreboard">{team_row(away, row.get('Projected Away Score'))}{team_row(home, row.get('Projected Home Score'))}</div>
-        <div class="chip-row">{''.join(chips)}</div>
         {best_odds_html(row)}
-        {market_pulse_html(row)}
+        <div class="scoreboard compact">{team_row(away, row.get('Projected Away Score'), away_prob, away_rank)}{team_row(home, row.get('Projected Home Score'), home_prob, home_rank)}</div>
+        <div class="chip-row">{''.join(chips)}</div>
+        {betting_splits_html(row)}
         {betting_snapshot_html(row)}
         {dossier_html(row)}
       </div>

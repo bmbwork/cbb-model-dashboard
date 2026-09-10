@@ -48,7 +48,7 @@ def test_card_grid_is_compacted_to_prevent_markdown_code_blocks(board_df):
 def test_bettor_facing_champion_card_hides_research_plumbing(board_df):
     board, _ = normalize_board(_champion_board(board_df))
     html = game_card_html(board.iloc[0])
-    assert "Production model" in html
+    assert "Division I matchup" in html
     assert "Model spread" in html
     assert "Model-implied odds" in html
     assert "B calibration" not in html

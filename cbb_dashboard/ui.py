@@ -328,5 +328,127 @@ div[data-testid="stDataFrame"] { border:1px solid var(--line-soft); border-radiu
 .metric-glossary-grid span { display:block; color:#927f77; font-size:.58rem; line-height:1.42; margin-top:2px; }
 @media (max-width:700px) { .metric-glossary-grid { grid-template-columns:1fr; } }
 
+
+/* v1.6.0 Stat Factory polish — retain CBB orange/burgundy identity */
+html,body,[class*="css"],p,div,label,input,button,textarea,select,h1,h2,h3,h4,.cbb-title,.metric-value,.team-name,.pick-team,.prob {
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif !important;
+  font-stretch:normal !important;
+}
+.block-container { max-width:1480px; padding-top:1.35rem; padding-bottom:4rem; }
+[data-testid="stSidebar"] { background:linear-gradient(180deg,#100a0c,#0b0709); }
+[data-testid="stSidebar"] [role="radiogroup"] { gap:.18rem; }
+[data-testid="stSidebar"] [role="radiogroup"] label { border-radius:9px; padding:.15rem .35rem; }
+[data-testid="stSidebar"] [role="radiogroup"] label:hover { background:rgba(249,115,22,.05); }
+.cbb-title { letter-spacing:-.035em; }
+.section-title { margin-top:1.15rem; }
+
+.game-card-grid { gap:14px; }
+.game-card {
+  border-radius:16px;
+  padding:15px 16px 14px;
+  background:linear-gradient(145deg,rgba(32,19,23,.985),rgba(17,10,13,.99));
+  border-color:rgba(231,203,188,.11);
+  box-shadow:0 12px 28px rgba(0,0,0,.14);
+}
+.game-card.strong { border-color:rgba(249,115,22,.34); }
+.game-head.polished { align-items:flex-start; margin-bottom:11px; }
+.game-meta { min-width:0; }
+.pick-hero { text-align:right; min-width:190px; }
+.pick-kicker { color:#aa968c; font-size:.55rem; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
+.pick-team { color:#fff8f2; font-size:1.04rem; font-weight:850; margin-top:2px; }
+.pick-hero .prob { font-size:2.25rem; color:var(--accent-2); margin-top:2px; }
+.pick-hero .prob-label { font-size:.55rem; }
+.pick-hero .model-pick { font-size:.68rem; color:#ecd9cf; margin-top:5px; }
+.rank-pill { border-radius:8px; padding:6px 8px; }
+.game-time { font-size:.66rem; }
+
+.primary-bet-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin:0 0 8px; }
+.primary-stat { min-width:0; border:1px solid rgba(231,203,188,.09); border-radius:10px; padding:10px; background:rgba(255,255,255,.017); }
+.primary-stat.model { border-color:rgba(45,212,191,.19); background:rgba(45,212,191,.025); }
+.primary-stat.market { border-color:rgba(251,191,36,.20); background:rgba(251,191,36,.025); }
+.primary-stat span { display:block; color:#9f8a80; font-size:.50rem; font-weight:850; letter-spacing:.08em; text-transform:uppercase; }
+.primary-stat strong { display:block; color:#fff9f4; font-size:.88rem; font-weight:850; margin-top:4px; line-height:1.24; overflow-wrap:anywhere; }
+.primary-stat.model strong { color:#d8fffb; }
+.primary-stat.market strong { color:#fff0ca; }
+.primary-stat small { display:block; color:#77665f; font-size:.48rem; line-height:1.28; margin-top:3px; }
+
+.market-status { display:flex; align-items:center; gap:7px; flex-wrap:wrap; min-width:0; border:1px solid rgba(231,203,188,.08); border-radius:9px; background:rgba(255,255,255,.014); padding:7px 9px; margin:0 0 9px; color:#9b8981; font-size:.58rem; }
+.market-status strong { color:#d7c7bf; font-size:.57rem; letter-spacing:.025em; }
+.market-status span:last-child { margin-left:auto; text-align:right; overflow-wrap:anywhere; }
+.market-dot { width:6px; height:6px; border-radius:50%; background:#85746c; flex:0 0 auto; }
+.market-status.orange { border-color:rgba(249,115,22,.20); background:rgba(249,115,22,.025); }
+.market-status.orange .market-dot { background:var(--accent); }
+.market-status.orange strong { color:#ffb985; }
+.market-status.teal { border-color:rgba(45,212,191,.18); background:rgba(45,212,191,.022); }
+.market-status.teal .market-dot { background:var(--accent-2); }
+.market-status.teal strong { color:#8fece3; }
+
+.scoreboard.compact { margin:8px 0 7px; border-radius:11px; }
+.scoreboard.compact .team-row { grid-template-columns:minmax(0,1fr) 62px 78px; gap:7px; padding:8px 10px; }
+.scoreboard.compact .team-name { font-size:.90rem; display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+.team-projection,.team-chance { text-align:right; min-width:0; }
+.team-projection span,.team-chance span { display:block; color:#7f6e67; font-size:.44rem; font-weight:850; letter-spacing:.08em; }
+.team-projection strong { display:block; color:#fff7f0; font-size:.92rem; margin-top:1px; }
+.team-chance strong { display:block; color:#d0c0b8; font-size:.82rem; margin-top:1px; }
+.team-row.pick .team-chance strong { color:var(--accent-2); }
+.ap-tag { display:inline-flex; align-items:center; border:1px solid rgba(251,191,36,.27); border-radius:999px; color:#ffe099; background:rgba(251,191,36,.055); padding:2px 5px; font-size:.48rem; font-weight:850; line-height:1; }
+.team-tag { margin-left:2px; }
+.chip-row { margin:7px 0 8px; gap:5px; }
+.chip { padding:4px 7px; font-size:.59rem; background:rgba(255,255,255,.016); }
+
+.split-strip { border:1px solid rgba(45,212,191,.13); border-radius:11px; background:rgba(45,212,191,.018); padding:9px 10px; margin-top:8px; }
+.split-strip.empty { border-color:rgba(231,203,188,.07); background:rgba(255,255,255,.010); }
+.split-strip-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:7px; }
+.split-strip-head span { color:#8feee5; font-size:.51rem; font-weight:900; letter-spacing:.10em; }
+.split-strip-head em { color:#807069; font-size:.49rem; font-style:normal; text-align:right; }
+.split-strip-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.split-stat { min-width:0; border:1px solid rgba(231,203,188,.07); border-radius:8px; padding:7px 8px; background:rgba(255,255,255,.012); }
+.split-stat span { display:block; color:#9c8980; font-size:.47rem; text-transform:uppercase; letter-spacing:.055em; font-weight:850; }
+.split-stat strong { display:block; color:#f7eee9; font-size:.73rem; margin-top:2px; line-height:1.25; overflow-wrap:anywhere; }
+.split-stat small { display:block; color:#70615b; font-size:.44rem; margin-top:2px; line-height:1.25; }
+
+.betting-snapshot.compact { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:7px; }
+.betting-snapshot.compact .profile-metric { padding:8px; border-radius:9px; background:rgba(255,255,255,.014); }
+.betting-snapshot.compact .profile-metric strong { font-size:.79rem; }
+.intel-dossier { margin-top:9px; padding-top:8px; }
+.intel-dossier > summary { padding:7px 8px; background:rgba(251,191,36,.025); border-color:rgba(251,191,36,.12); font-size:.64rem; }
+.dossier-context-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+
+.slate-filter-note { border:1px solid rgba(249,115,22,.14); border-radius:11px; background:rgba(249,115,22,.025); padding:9px 10px; color:#a9958c; font-size:.72rem; line-height:1.45; margin:.25rem 0 .8rem; }
+.home-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:.9rem 0 1.1rem; }
+.home-card { border:1px solid rgba(231,203,188,.10); border-radius:13px; padding:14px; background:rgba(255,255,255,.014); }
+.home-card span { color:var(--accent); font-size:.57rem; font-weight:900; letter-spacing:.11em; }
+.home-card strong { display:block; color:#fff8f2; font-size:1rem; margin-top:5px; }
+.home-card p { color:#9c8980; font-size:.73rem; line-height:1.45; margin:5px 0 0; }
+
+@media (max-width:1180px) {
+  .primary-bet-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:800px) {
+  .home-grid { grid-template-columns:1fr; }
+  .dossier-context-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .market-status span:last-child { margin-left:0; width:100%; text-align:left; }
+}
+@media (max-width:700px) {
+  .game-card { padding:13px; }
+  .game-head.polished { flex-direction:column; gap:8px; }
+  .pick-hero { min-width:0; width:100%; text-align:left; display:grid; grid-template-columns:1fr auto; grid-template-areas:"kicker prob" "team prob" "caption caption" "spread spread"; column-gap:12px; }
+  .pick-hero .pick-kicker { grid-area:kicker; }
+  .pick-hero .pick-team { grid-area:team; }
+  .pick-hero .prob { grid-area:prob; align-self:center; }
+  .pick-hero .prob-label { grid-area:caption; text-align:left; margin-top:1px; }
+  .pick-hero .model-pick { grid-area:spread; text-align:left; margin-top:3px; }
+  .primary-bet-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .scoreboard.compact .team-row { grid-template-columns:minmax(0,1fr) 52px 67px; }
+  .split-strip-grid { grid-template-columns:1fr; }
+  .split-strip-head { display:block; }
+  .split-strip-head em { display:block; text-align:left; margin-top:3px; }
+  .betting-snapshot.compact { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:520px) {
+  .primary-bet-grid { grid-template-columns:1fr; }
+  .betting-snapshot.compact { grid-template-columns:1fr; }
+}
+
 </style>
 """

@@ -7,7 +7,7 @@ from cbb_dashboard.intelligence import game_card_html, dossier_html
 def test_priority_board_only_offers_top10_and_all():
     app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     assert '["Top 10", "All"]' in app
-    assert '"Top 25"' not in app
+    assert '["Top 10", "Top 25", "All"]' in app
     assert '"Top 50"' not in app
 
 

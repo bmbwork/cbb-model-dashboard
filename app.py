@@ -9,6 +9,14 @@ import pandas as pd
 import streamlit as st
 
 from cbb_dashboard.best_odds_archive import attach_best_odds_to_board
+from cbb_dashboard.board_filters import (
+    MARKET_FILTERS,
+    MOVE_FILTERS,
+    RANK_FILTERS,
+    SORT_OPTIONS,
+    enrich_filter_fields,
+    filter_board,
+)
 from cbb_dashboard.charts import (
     calibration_chart,
     confidence_chart,
@@ -78,10 +86,10 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 st.set_page_config(
-    page_title="CBB Model | Market Terminal",
+    page_title="CBB Model | Betting Intelligence",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -198,16 +206,17 @@ def published_time(record: dict[str, Any] | None) -> str:
         return str(raw)
 
 
-def render_header(report, record: dict[str, Any] | None) -> None:
+def render_header(report, record: dict[str, Any] | None, compact: bool = False) -> None:
     rev = (record or {}).get("revision") or 1
     stamp = published_time(record)
     publication = f"Published revision {rev}" + (f" • {stamp}" if stamp else "")
     role = "Production Champion" if str(report.model_version).upper() == "1.1.3B" else "Historical"
-    st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="cbb-title">{BRAND} <span style="color:#fbbf24">//</span> CHAMPION TERMINAL</div>',
-        unsafe_allow_html=True,
-    )
+    if not compact:
+        st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="cbb-title">{BRAND} <span style="color:#fbbf24">//</span> BETTING INTELLIGENCE</div>',
+            unsafe_allow_html=True,
+        )
     st.markdown(
         f'<div class="cbb-subtitle">{esc(report.slate_date)} &nbsp;•&nbsp; {esc(role)} V{esc(report.model_version)} &nbsp;•&nbsp; {esc(publication)}</div>',
         unsafe_allow_html=True,
@@ -225,6 +234,39 @@ def render_empty_state(store_error: str | None) -> None:
         '<div class="firewall-note"><strong>Model firewall:</strong> the website reads published model output. It does not rerun, rescore, or modify the independent CBB prediction engine.</div>',
         unsafe_allow_html=True,
     )
+
+def render_home(records: list[dict[str, Any]], store_error: str | None = None) -> None:
+    latest = str(records[0].get("slate_date") or "") if records else "No published slate"
+    st.markdown('<div class="cbb-kicker">STAT FACTORY · COLLEGE BASKETBALL</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> BETTING INTELLIGENCE</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="cbb-subtitle">Independent forecasts, sportsbook prices and market movement kept in separate, readable layers.</div>',
+        unsafe_allow_html=True,
+    )
+    home_html = (
+        '<div class="home-grid">'
+        '<div class="home-card"><span>MODEL</span><strong>What should happen?</strong><p>V1.1.3B publishes the independent winner probability, projected score and fair spread before sportsbook information is attached.</p></div>'
+        '<div class="home-card"><span>MARKET</span><strong>What is priced now?</strong><p>Best tracked spread and moneyline, betting splits, opener, movement and close come from the downstream sportsbook layer.</p></div>'
+        '<div class="home-card"><span>DECISION INTELLIGENCE</span><strong>Where do they disagree?</strong><p>Compare the forecast with the market without feeding sportsbook information back into the model.</p></div>'
+        '</div>'
+    )
+    st.markdown(compact_html(home_html), unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        metric_card("Latest published slate", latest, "Open Today's Board")
+    with c2:
+        metric_card("Forecasting champion", "V1.1.3B", "Frozen production model")
+    with c3:
+        metric_card("Market provider", "Owls Insight", "Sportsbook layer only")
+    if store_error:
+        st.info("Publishing storage is not available in this deployment. The methodology guide remains available below.")
+    st.markdown('<div class="section-title">How to use the product</div>', unsafe_allow_html=True)
+    st.markdown(
+        "**Today's Board** is the fast read of the latest published slate. **Slates by Date** is the main research workbench: choose a date, filter the games by AP ranking, model confidence, sportsbook price, market availability, movement and data quality, then inspect the same polished game cards. **Performance Lab** is for historical model evaluation."
+    )
+    with st.expander("Model and market guide"):
+        render_model_guide(compact=True)
+
 
 def format_board_for_table(board: pd.DataFrame) -> pd.DataFrame:
     out = board_table(board)
@@ -284,47 +326,41 @@ def format_board_for_table(board: pd.DataFrame) -> pd.DataFrame:
     out = out.loc[:, ~out.columns.duplicated()].copy()
     return out
 
-def apply_board_filters(board: pd.DataFrame) -> pd.DataFrame:
-    st.markdown('<div class="section-title">Board filters</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    teams = sorted(set(board["Home Team"].astype(str)).union(set(board["Away Team"].astype(str))))
-    with c1:
-        selected_teams = st.multiselect("Teams", teams, placeholder="All teams")
-    with c2:
-        cohort = st.selectbox("Game type", ["All games", "Division I vs Division I", "Other games"])
-    with c3:
-        confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1, help="Only show picks where the model gives its selected team at least this chance to win.")
-    with c4:
-        verified_only = st.toggle("Verified player status only", value=False, help="Show only games where player availability was explicitly verified before tip-off.")
-    filtered = board.copy()
-    if selected_teams:
-        filtered = filtered[filtered["Home Team"].isin(selected_teams) | filtered["Away Team"].isin(selected_teams)]
-    if cohort == "Division I vs Division I":
-        filtered = filtered[filtered["_is_d1"]]
-    elif cohort == "Other games":
-        filtered = filtered[~filtered["_is_d1"]]
-    filtered = filtered[filtered["_win_prob"] >= confidence_floor / 100.0]
-    if verified_only:
-        filtered = filtered[filtered["_availability_verified"]]
-    return filtered
+def _ranked_game_count(board: pd.DataFrame) -> int:
+    home = pd.to_numeric(board.get("Home Rank", pd.Series(np.nan, index=board.index)), errors="coerce")
+    away = pd.to_numeric(board.get("Away Rank", pd.Series(np.nan, index=board.index)), errors="coerce")
+    return int((home.between(1, 25, inclusive="both") | away.between(1, 25, inclusive="both")).sum())
+
+
+def _market_coverage_count(board: pd.DataFrame) -> int:
+    if board.empty:
+        return 0
+    enriched = enrich_filter_fields(board)
+    ml = pd.to_numeric(enriched.get("_filter_best_ml"), errors="coerce").notna()
+    spread = pd.to_numeric(enriched.get("_filter_best_spread"), errors="coerce").notna()
+    return int((ml | spread).sum())
+
 
 def render_board(board: pd.DataFrame, report) -> None:
+    # Fast latest-slate product view. Deep filtering lives in Slates by Date.
     status_strip(report, board)
-    d1 = board[board["_is_d1"]].copy()
     strongest = board.sort_values("_win_prob", ascending=False).iloc[0] if len(board) else None
+    ranked_games = _ranked_game_count(board)
+    market_games = _market_coverage_count(board)
     graded = board[board.get("_grade_eligible", pd.Series(False, index=board.index)).fillna(False).astype(bool)].copy()
     ml_wins = int(graded.get("_ml_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
     spread_known = graded.get("_spread_correct", pd.Series(dtype="boolean")).notna().sum() if len(graded) else 0
     spread_wins = int(graded.get("_spread_correct", pd.Series(dtype="boolean")).fillna(False).sum()) if len(graded) else 0
-    clear_sides = int((pd.to_numeric(board["Win Probability"], errors="coerce") >= 0.60).sum())
 
-    cols = st.columns(6)
-    with cols[0]: metric_card("Games", f"{len(board)}", f"{report.d1_games} Division I matchups", "Division I matchup means both teams are Division I.")
-    with cols[1]: metric_card("Strongest pick", str(strongest.get("Model Pick")) if strongest is not None else "—", fmt_pct(strongest.get("Win Probability")) if strongest is not None else "", "The team with the highest model win chance on this slate.")
-    with cols[2]: metric_card("Strong model leans", f"{clear_sides}", "60%+ model win chance", "Number of picks where the model gives its selected team at least a 60% chance to win.")
-    with cols[3]: metric_card("Neutral court", f"{int(board['_neutral'].sum())}", "No home-court location advantage")
-    with cols[4]: metric_card("Winner picks", f"{ml_wins}-{len(graded)-ml_wins}" if len(graded) else "Pregame", "Straight-up game winners", "Moneyline / straight-up grading: did the model pick the team that won?")
-    with cols[5]: metric_card("Spread picks", f"{spread_wins}-{int(spread_known)-spread_wins}" if spread_known else "—", "Only when a pregame line is saved", "Spread grading uses the saved pregame or taken sportsbook line. The closing line is tracked separately.")
+    cols = st.columns(4)
+    with cols[0]:
+        metric_card("Games", f"{len(board)}", f"{report.d1_games} Division I matchups")
+    with cols[1]:
+        metric_card("Strongest model pick", str(strongest.get("Model Pick")) if strongest is not None else "—", fmt_pct(strongest.get("Win Probability")) if strongest is not None else "")
+    with cols[2]:
+        metric_card("AP-ranked games", f"{ranked_games}", "At least one AP Top 25 team", "Uses the published game-context AP rankings when available.")
+    with cols[3]:
+        metric_card("Sportsbook coverage", f"{market_games}/{len(board)}", "Current best spread or ML tracked")
 
     if len(graded):
         spread_note = f'<span class="grade-summary-pill gold">SPREAD {spread_wins}-{int(spread_known)-spread_wins}</span>' if spread_known else '<span class="grade-summary-pill muted">SPREAD — no pregame line saved</span>'
@@ -333,20 +369,124 @@ def render_board(board: pd.DataFrame, report) -> None:
     for warning in report.warnings:
         st.warning(warning, icon="⚠️")
 
-    st.markdown('<div class="section-title">Priority board</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-note">Cards show the model pick, projected score and win chance first. Open <strong>Why this pick?</strong> for plain-English reasons, risks and team comparisons.</div>', unsafe_allow_html=True)
+    st.markdown("<div class=\"section-title\">Today's Board</div>", unsafe_allow_html=True)
+    st.markdown('<div class="section-note">The card now keeps the model, best sportsbook price, market lifecycle and betting splits in one scan. Open <strong>Why this pick?</strong> only when you want the deeper matchup explanation.</div>', unsafe_allow_html=True)
     scope = st.segmented_control("Card depth", ["Top 10", "All"], default="Top 10", label_visibility="collapsed")
-    n = {"Top 10": 10, "All": len(board)}.get(scope, 10)
+    n = 10 if scope == "Top 10" else len(board)
     st.markdown(game_card_grid_html(board.head(n)), unsafe_allow_html=True)
+    st.caption("Need an older slate or more control? Use Slates by Date for sportsbook-odds, AP-ranking and advanced filters.")
 
-    filtered = apply_board_filters(board)
-    st.markdown(f'<div class="section-title">Full decision board ({len(filtered)})</div>', unsafe_allow_html=True)
-    st.caption("Hover over unfamiliar card metrics for definitions. The full table uses plain-English column names; technical model field names are hidden.")
-    st.dataframe(format_board_for_table(filtered), use_container_width=True, hide_index=True, height=min(700, 70 + 35 * max(4, len(filtered))))
 
-    if len(d1) >= 2:
-        st.markdown('<div class="section-title">Strongest model picks</div>', unsafe_allow_html=True)
-        st.plotly_chart(confidence_chart(d1, top_n=min(25, len(d1))), use_container_width=True)
+def _compact_slate_table(board: pd.DataFrame) -> pd.DataFrame:
+    if board.empty:
+        return pd.DataFrame()
+    work = enrich_filter_fields(board)
+    out = pd.DataFrame({
+        "Away": work.get("Away Team"),
+        "Away AP": pd.to_numeric(work.get("Away Rank"), errors="coerce"),
+        "Home": work.get("Home Team"),
+        "Home AP": pd.to_numeric(work.get("Home Rank"), errors="coerce"),
+        "Model Pick": work.get("Model Pick"),
+        "Win Chance": pd.to_numeric(work.get("Win Probability"), errors="coerce"),
+        "Model Spread": pd.to_numeric(work.get("Fair Spread"), errors="coerce"),
+        "Best Spread": pd.to_numeric(work.get("_filter_best_spread"), errors="coerce"),
+        "Best ML": pd.to_numeric(work.get("_filter_best_ml"), errors="coerce"),
+        "Spread Disagreement": pd.to_numeric(work.get("_filter_spread_gap"), errors="coerce"),
+        "Data Confidence": pd.to_numeric(work.get("Data Quality"), errors="coerce"),
+    })
+    out["Win Chance"] = out["Win Chance"].map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
+    for c in ["Model Spread", "Best Spread"]:
+        out[c] = out[c].map(lambda x: f"{x:+.1f}" if pd.notna(x) else "—")
+    out["Best ML"] = out["Best ML"].map(lambda x: f"{int(round(x)):+d}" if pd.notna(x) else "—")
+    out["Spread Disagreement"] = out["Spread Disagreement"].map(lambda x: f"{x:.1f} pts" if pd.notna(x) else "—")
+    for c in ["Away AP", "Home AP"]:
+        out[c] = out[c].map(lambda x: f"#{int(x)}" if pd.notna(x) and 1 <= x <= 25 else "—")
+    out["Data Confidence"] = out["Data Confidence"].map(lambda x: f"{x:.0f}/100" if pd.notna(x) else "—")
+    return out
+
+
+def render_slates_by_date(board: pd.DataFrame, report) -> None:
+    st.markdown('<div class="cbb-kicker">SLATE DISCOVERY</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Filter this slate</div>', unsafe_allow_html=True)
+    st.markdown('<div class="slate-filter-note">Filters change only what is displayed. They never alter V1.1.3B, rewrite a published forecast, or use sportsbook information as a model input.</div>', unsafe_allow_html=True)
+
+    teams = sorted(set(board.get("Home Team", pd.Series(dtype=str)).astype(str)).union(set(board.get("Away Team", pd.Series(dtype=str)).astype(str))))
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        selected_teams = st.multiselect("Teams", teams, placeholder="All teams")
+    with c2:
+        ranking_mode = st.selectbox("AP ranking", RANK_FILTERS, help="Uses published AP rankings in the game-context data when available.")
+    with c3:
+        confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1)
+    with c4:
+        sort_by = st.selectbox("Sort games by", SORT_OPTIONS)
+
+    c5, c6, c7, c8 = st.columns([1.15, 1, 1, 1.35])
+    with c5:
+        ml_enabled = st.toggle("Filter best ML price", value=False, help="Uses the best currently tracked sportsbook moneyline on the model's straight-up pick.")
+    with c6:
+        ml_min = st.number_input("ML from", value=-350, step=25, disabled=not ml_enabled)
+    with c7:
+        ml_max = st.number_input("ML to", value=500, step=25, disabled=not ml_enabled)
+    with c8:
+        market_mode = st.selectbox("Sportsbook availability", MARKET_FILTERS)
+
+    with st.expander("More filters"):
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            min_gap = st.slider("Minimum spread disagreement", 0.0, 15.0, 0.0, 0.5, help="Absolute difference between model fair spread and the current best spread for the model pick. Display-only research filter.")
+        with a2:
+            movement_mode = st.selectbox("Line movement", MOVE_FILTERS)
+        with a3:
+            min_quality = st.slider("Minimum data confidence", 0, 100, 0, 5)
+        b1, b2, b3 = st.columns(3)
+        with b1:
+            verified_only = st.toggle("Verified player status only", value=False)
+        with b2:
+            d1_only = st.toggle("Division I matchups only", value=False)
+        with b3:
+            venue_mode = st.selectbox("Venue", ["All venues", "Neutral court only", "Campus / scheduled site only"])
+
+    try:
+        filtered = filter_board(
+            board,
+            teams=selected_teams,
+            ranking_mode=ranking_mode,
+            min_win_probability=confidence_floor / 100.0,
+            ml_range_enabled=ml_enabled,
+            ml_min=int(ml_min),
+            ml_max=int(ml_max),
+            market_mode=market_mode,
+            min_spread_gap=float(min_gap),
+            movement_mode=movement_mode,
+            min_data_quality=float(min_quality),
+            verified_only=verified_only,
+            d1_only=d1_only,
+            venue_mode=venue_mode,
+            sort_by=sort_by,
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    market_covered = _market_coverage_count(filtered)
+    ranked_count = _ranked_game_count(filtered)
+    st.markdown(f'<div class="section-title">Matching games ({len(filtered)})</div>', unsafe_allow_html=True)
+    st.caption(f"{ranked_count} include an AP Top 25 team · {market_covered} have a tracked spread or moneyline")
+    if filtered.empty:
+        st.info("No games match these filters. Widen the odds/ranking/confidence range or choose a different slate date.")
+        return
+
+    view = st.segmented_control("Results view", ["Cards", "Table"], default="Cards", label_visibility="collapsed")
+    if view == "Cards":
+        limit_choice = st.segmented_control("Cards shown", ["Top 10", "Top 25", "All"], default="Top 25", label_visibility="collapsed")
+        limit = {"Top 10": 10, "Top 25": 25, "All": len(filtered)}.get(limit_choice, 25)
+        st.markdown(game_card_grid_html(filtered.head(limit)), unsafe_allow_html=True)
+        if limit < len(filtered):
+            st.caption(f"Showing {limit} of {len(filtered)} matching games. Choose All to render the full filtered slate.")
+    else:
+        st.dataframe(_compact_slate_table(filtered), use_container_width=True, hide_index=True, height=min(760, 70 + 35 * max(5, len(filtered))))
+
 
 def matchup_label(row: pd.Series) -> str:
     marker = " · N" if bool(row.get("Neutral Site", False)) else ""
@@ -613,9 +753,10 @@ def render_performance_lab(records: list[dict[str, Any]]) -> None:
             display_hist["Winner Accuracy"] = display_hist["Winner Accuracy"].map(lambda x: f"{x:.1%}" if pd.notna(x) else "—")
         st.dataframe(display_hist.sort_values("Slate Date", ascending=False), use_container_width=True, hide_index=True)
 
-def render_model_guide() -> None:
-    st.markdown('<div class="cbb-kicker">HOW TO READ THE SITE</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Plain-English Guide</div>', unsafe_allow_html=True)
+def render_model_guide(compact: bool = False) -> None:
+    if not compact:
+        st.markdown('<div class="cbb-kicker">HOW TO READ THE SITE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Plain-English Guide</div>', unsafe_allow_html=True)
     st.markdown(
         """
 The site is built to answer four simple questions: **Who does the model like? By how much? Why? What could go wrong?**
@@ -645,10 +786,10 @@ The site is built to answer four simple questions: **Who does the model like? By
 **Spread** — graded only against a saved pregame or taken sportsbook spread. The closing line is tracked separately and never substituted for the line that was actually available.
         """
     )
-    st.markdown('<div class="section-title">How to read the Market Terminal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">How to read sportsbook intelligence</div>', unsafe_allow_html=True)
     st.markdown(
         """
-**Betting crowd** — owner-only Owls Insight data shows the percentage of individual tickets and the percentage of total handle on each side. The raw percentages are visible only in Admin Studio. Public pages receive a non-numeric plain-English summary such as “public heavily on Team A” or “bets and money disagree.”
+**Betting splits** — when a validated Owls snapshot exists, public game cards show the percentage of tickets and money on the relevant spread, moneyline and total. Missing or invalid split data is shown as unavailable rather than estimated.
 
 **Money vs. bets** — when the share of dollars on one side is larger than its share of individual bets, the average wager on that side is larger.
 
@@ -759,7 +900,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             elif market_board.empty:
                 st.info("The selected board could not be loaded, so market data cannot be refreshed yet.")
             else:
-                st.success("Owls Insight is configured as the sole production market-data provider for sportsbook odds and owner-only betting splits.")
+                st.success("Owls Insight is configured as the sole production market-data provider for sportsbook odds and the private raw betting-split archive.")
                 st.caption("Sportsbook odds remain downstream only. DraftKings is the default reference line; Pinnacle/Circa and the broader returned book set are retained as market-comparison diagnostics.")
                 owls_odds_role = st.selectbox(
                     "How should this sportsbook snapshot be used?",
@@ -812,7 +953,7 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
                         st.error(f"Owls Insight sportsbook refresh failed safely: {type(exc).__name__}")
             st.markdown("##### Owls Insight live splits + private archive — owner view")
             if owls_key and not market_board.empty:
-                st.success("Owls Insight is configured. Every live capture automatically appends the raw DraftKings/Circa ticket and handle splits plus the dashboard sharp-money diagnostics to the private Supabase archive. Public pages receive only derived plain-English commentary.")
+                st.success("Owls Insight is configured. Every live capture appends raw DraftKings/Circa ticket and handle splits plus sharp-money diagnostics to the private Supabase archive. Public game cards can render only the latest validated ticket/money percentages through a narrow server-side projection; raw rows and sharp diagnostics remain private.")
 
                 def run_owls_live_refresh(target_date: str, target_board: pd.DataFrame, publish_public: bool, key_suffix: str, show_preview: bool = True, capture_trigger: str = "manual") -> dict[str, Any]:
                     store.check_owner_splits_access()
@@ -1030,10 +1171,75 @@ def cached_market_list(_store: SupabaseSlateStore | None, slate_date: str) -> li
 
 
 @st.cache_data(ttl=30, show_spinner=False)
+def cached_card_split_list(_store: SupabaseSlateStore | None, slate_date: str) -> list[dict[str, Any]]:
+    if _store is None or not slate_date:
+        return []
+    return _store.list_card_split_projection(slate_date=slate_date, limit=5000)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
 def cached_context_list(_store: SupabaseSlateStore | None, slate_date: str) -> list[dict[str, Any]]:
     if _store is None or not slate_date:
         return []
     return _store.list_game_context(slate_date=slate_date, limit=5000)
+
+
+def load_public_board(
+    record: dict[str, Any] | None,
+    store: SupabaseSlateStore | None,
+) -> tuple[pd.DataFrame, Any, pd.DataFrame, pd.DataFrame, str | None]:
+    """Load one published slate plus downstream market context only when a board page needs it."""
+    if not record:
+        return pd.DataFrame(), None, pd.DataFrame(), pd.DataFrame(), None
+    board = pd.DataFrame()
+    report = None
+    market_snapshots = pd.DataFrame()
+    market_context = pd.DataFrame()
+    market_error: str | None = None
+    try:
+        board, report = normalize_board(SupabaseSlateStore.board_frame(record))
+        grading = SupabaseSlateStore.grading_frame(record)
+        if grading is not None and not grading.empty:
+            board = attach_grading(board, grading)
+        if store is not None:
+            try:
+                slate_date = str(record.get("slate_date") or "")
+                market_snapshots = snapshots_frame(cached_market_list(store, slate_date))
+                market_context = context_frame(cached_context_list(store, slate_date))
+
+                # Raw betting-split history remains private in Supabase. Pull only
+                # the card-safe numeric projection server-side, with no line/sharp
+                # fields and observational role only. This exposes the useful
+                # ticket/money percentages without weakening table RLS or market
+                # provenance.
+                display_snapshots = market_snapshots
+                try:
+                    split_rows = cached_card_split_list(store, slate_date)
+                    if split_rows:
+                        split_projection = snapshots_frame(split_rows)
+                        display_snapshots = pd.concat([market_snapshots, split_projection], ignore_index=True, sort=False)
+                except Exception:
+                    # Missing secret/private split storage should degrade only the
+                    # split strip, never the model or sportsbook-odds card.
+                    pass
+
+                board = attach_market_to_board(board, display_snapshots, market_context)
+                try:
+                    start_source = board["_start_dt"] if "_start_dt" in board.columns else board.get("Start Time UTC", pd.Series(dtype=object))
+                    starts = pd.to_datetime(start_source, utc=True, errors="coerce").dropna()
+                    if not starts.empty:
+                        archive_start = (starts.min() - pd.Timedelta(hours=8)).isoformat()
+                        archive_end = (starts.max() + pd.Timedelta(hours=8)).isoformat()
+                        archive_rows = cached_best_odds_archive(store, archive_start, archive_end)
+                        board = attach_best_odds_to_board(board, archive_rows)
+                except Exception:
+                    # Archive setup is additive; its absence must never take down the model board.
+                    pass
+            except Exception as exc:
+                market_error = str(exc)
+    except Exception as exc:
+        st.error(f"The published board could not be validated: {exc}")
+    return board, report, market_snapshots, market_context, market_error
 
 
 store, store_error = make_store()
@@ -1049,22 +1255,11 @@ if store is not None:
         store_error = str(exc)
         records = []
 
-# Sidebar mirrors the HR dashboard's compact navigation while using a basketball-orange identity.
+# v1.6.0: the sidebar is navigation only. Date discovery belongs to Slates by Date.
 with st.sidebar:
     st.markdown('<div class="cbb-kicker">CBB MODEL</div>', unsafe_allow_html=True)
-    st.caption("Public dashboard · read-only")
-    if records:
-        dates = [str(r.get("slate_date")) for r in records if r.get("slate_date")]
-        selected_date = st.selectbox(
-            "Published slate",
-            dates,
-            index=0,
-            help="Defaults to the most recently published decision board, regardless of game date.",
-        )
-    else:
-        selected_date = None
-
-    public_pages = ["Today's Board", "Analyst Picks", "Market Terminal", "Matchup Explorer", "Team Intelligence", "Performance Lab", "Model Guide"]
+    st.caption("Stat Factory · College Basketball")
+    public_pages = ["Home", "Today's Board", "Slates by Date", "Analyst Picks", "Performance Lab"]
     pages = public_pages + (["Admin Studio"] if access.authorized else [])
     page = st.radio("Navigate", pages, label_visibility="collapsed")
 
@@ -1088,77 +1283,44 @@ with st.sidebar:
         st.caption("Publishing storage unavailable")
     st.markdown(f'<div class="small-muted" style="margin-top:1rem">Betting Intelligence v{APP_VERSION}</div>', unsafe_allow_html=True)
 
-if page == "Analyst Picks":
+if page == "Home":
+    render_home(records, store_error)
+elif page == "Analyst Picks":
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> ANALYST PICKS</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cbb-subtitle">Official human selections published from Stat Factory - separate from the independent CBB forecast engine</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-subtitle">Official human selections published from Stat Factory · separate from the independent CBB forecast engine.</div>', unsafe_allow_html=True)
     st.info("Analyst selections are an editorial layer. They may reference model output and sportsbook context, but they do not feed back into or alter the frozen CBB model forecast.")
     render_stat_factory_analyst_picks("cbb", heading=False)
-    st.markdown(f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Betting Intelligence v{APP_VERSION} - analyst opinions remain separate from the production model</div>', unsafe_allow_html=True)
-    st.stop()
-
-record: dict[str, Any] | None = None
-if selected_date and records:
-    record = next((r for r in records if str(r.get("slate_date")) == selected_date), None)
-
-board = pd.DataFrame()
-report = None
-market_snapshots = pd.DataFrame()
-market_context = pd.DataFrame()
-market_error: str | None = None
-if record:
-    try:
-        board, report = normalize_board(SupabaseSlateStore.board_frame(record))
-        grading = SupabaseSlateStore.grading_frame(record)
-        if grading is not None and not grading.empty:
-            board = attach_grading(board, grading)
-        if store is not None:
-            try:
-                market_snapshots = snapshots_frame(cached_market_list(store, str(record.get("slate_date") or "")))
-                market_context = context_frame(cached_context_list(store, str(record.get("slate_date") or "")))
-                board = attach_market_to_board(board, market_snapshots, market_context)
-                # The automated archive is independent of model publication. When the
-                # selected board matches an archived Owls event, attach best available
-                # open/current/close quotes without changing model or ATS grading data.
-                try:
-                    start_source = board["_start_dt"] if "_start_dt" in board.columns else board.get("Start Time UTC", pd.Series(dtype=object))
-                    starts = pd.to_datetime(start_source, utc=True, errors="coerce").dropna()
-                    if not starts.empty:
-                        archive_start = (starts.min() - pd.Timedelta(hours=8)).isoformat()
-                        archive_end = (starts.max() + pd.Timedelta(hours=8)).isoformat()
-                        archive_rows = cached_best_odds_archive(store, archive_start, archive_end)
-                        board = attach_best_odds_to_board(board, archive_rows)
-                except Exception:
-                    # v1.5 migration/setup can be completed after code deployment;
-                    # absence of the archive table must never take the public board down.
-                    pass
-            except Exception as exc:
-                market_error = str(exc)
-    except Exception as exc:
-        st.error(f"The published board could not be validated: {exc}")
-
-if page == "Admin Studio":
+elif page == "Performance Lab":
+    render_performance_lab(records)
+elif page == "Admin Studio":
     render_admin_studio(store, access, records)
-elif board.empty or report is None:
-    render_empty_state(store_error)
-    if page == "Model Guide":
-        render_model_guide()
 else:
-    render_header(report, record)
-    if page == "Today's Board":
-        render_board(board, report)
-    elif page == "Market Terminal":
-        render_market_terminal(board, market_snapshots, market_error, allow_download=access.authorized)
-    elif page == "Matchup Explorer":
-        render_matchup_explorer(board)
-    elif page == "Team Intelligence":
-        render_team_intelligence(board)
-    elif page == "Performance Lab":
-        render_performance_lab(records)
-    elif page == "Model Guide":
-        render_model_guide()
+    dates = [str(r.get("slate_date")) for r in records if r.get("slate_date")]
+    # Preserve storage order: records are returned newest-first by the slate store.
+    dates = list(dict.fromkeys(dates))
+    selected_date: str | None = dates[0] if dates else None
+    if page == "Slates by Date":
+        st.markdown('<div class="cbb-kicker">SLATES BY DATE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cbb-title">FIND THE <span style="color:#f97316">SLATE</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="cbb-subtitle">Choose a published date, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.</div>', unsafe_allow_html=True)
+        if dates:
+            selected_date = st.selectbox("Slate date", dates, index=0, help="Published decision boards, newest first.")
+
+    record = next((r for r in records if selected_date and str(r.get("slate_date")) == selected_date), None)
+    board, report, market_snapshots, market_context, market_error = load_public_board(record, store)
+    if board.empty or report is None:
+        render_empty_state(store_error)
+    else:
+        render_header(report, record, compact=(page == "Slates by Date"))
+        if market_error:
+            st.caption("Some sportsbook context is temporarily unavailable; the independent model board remains intact.")
+        if page == "Today's Board":
+            render_board(board, report)
+        elif page == "Slates by Date":
+            render_slates_by_date(board, report)
 
 st.markdown(
-    f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Betting Intelligence v{APP_VERSION} • Public interface read-only • Independent model remains market-blind</div>',
+    f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Betting Intelligence v{APP_VERSION} • Independent market-blind forecast + downstream sportsbook intelligence</div>',
     unsafe_allow_html=True,
 )

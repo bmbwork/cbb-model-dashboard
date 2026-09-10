@@ -1,4 +1,4 @@
-CBB Model Dashboard v1.1 — Intelligence Terminal
+CBB Model Dashboard v1.6.0 — Stat Factory UI Polish
 
 app.py
 requirements.txt
@@ -16,6 +16,7 @@ supabase/schema.sql
 cbb_dashboard/__init__.py
 cbb_dashboard/ui.py
 cbb_dashboard/data.py
+cbb_dashboard/board_filters.py
 cbb_dashboard/intelligence.py
 cbb_dashboard/charts.py
 cbb_dashboard/performance.py
@@ -24,3 +25,6 @@ cbb_dashboard/storage.py
 tests/
 DESIGN_PREVIEW.html
 DESIGN_PREVIEW.png
+
+V1_6_0_STAT_FACTORY_UI_POLISH_RELEASE_NOTES.md
+VALIDATION_REPORT_V1_6_0.md
