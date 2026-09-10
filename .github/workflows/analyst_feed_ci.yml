@@ -1,0 +1,20 @@
+name: Analyst Feed CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile analyst integration
+        run: python -m py_compile stat_factory_access.py stat_factory_analyst_picks.py pages/1_Analyst_Picks.py
