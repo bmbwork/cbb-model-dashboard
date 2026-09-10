@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LABEL="com.statfactory.cbb-model-refresh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_WEB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+WEB_ROOT="${2:-$DEFAULT_WEB_ROOT}"
+MODEL_ROOT="${1:-${CBB_MODEL_ROOT:-}}"
+CONFIG_DIR="$HOME/.config/stat_factory"
+CONFIG_PATH="$CONFIG_DIR/cbb_automation.json"
+ENV_PATH="$CONFIG_DIR/cbb_automation.env"
+LOG_DIR="$HOME/Library/Logs/StatFactory/CBB"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+say() { printf '\n[CBB automation] %s\n' "$*"; }
+fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+
+if [ "${1:-}" = "--uninstall" ]; then
+  launchctl bootout "gui/$UID" "$PLIST" >/dev/null 2>&1 || true
+  rm -f "$PLIST"
+  say "Removed $LABEL from launchd. Configuration/secrets were left in $CONFIG_DIR."
+  exit 0
+fi
+
+[ -d "$WEB_ROOT/.git" ] || fail "CBB website repository not found: $WEB_ROOT"
+[ -f "$WEB_ROOT/scripts/run_cbb_model_refresh.py" ] || fail "Scheduled refresh runner is missing from the website repository."
+
+if [ -z "$MODEL_ROOT" ]; then
+  matches="$(find "$HOME/Desktop" -maxdepth 4 -type f -name 'run_cbb_champion.sh' -print 2>/dev/null || true)"
+  count="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+  if [ "$count" = "1" ]; then
+    MODEL_ROOT="$(dirname "$matches")"
+    say "Auto-detected frozen champion at: $MODEL_ROOT"
+  elif [ "$count" = "0" ]; then
+    fail "Could not auto-detect run_cbb_champion.sh under ~/Desktop. Re-run with the model folder as the first argument."
+  else
+    printf '\nMultiple CBB champion runners were found:\n%s\n' "$matches" >&2
+    fail "Re-run with the exact frozen V1.1.3B model folder as the first argument."
+  fi
+fi
+
+MODEL_ROOT="$(cd "$MODEL_ROOT" && pwd)"
+[ -f "$MODEL_ROOT/run_cbb_champion.sh" ] || fail "run_cbb_champion.sh not found in: $MODEL_ROOT"
+[ -f "$MODEL_ROOT/ACTIVE_CBB_Prediction_Engine_V1_1_3B_CHAMPION.py" ] || fail "Frozen V1.1.3B champion runner not found in: $MODEL_ROOT"
+[ -x "$MODEL_ROOT/.venv/bin/python3" ] || fail "Model Python was not found at $MODEL_ROOT/.venv/bin/python3"
+if [ ! -f "$MODEL_ROOT/.env" ] || ! grep -Eq '^[[:space:]]*(CBBD_API_KEY|BEARER_TOKEN)[[:space:]]*=' "$MODEL_ROOT/.env"; then
+  fail "The frozen model .env does not contain CBBD_API_KEY or BEARER_TOKEN. The scheduled runner would not be able to refresh basketball data."
+fi
+
+PY=""
+for candidate in "$WEB_ROOT/.venv/bin/python" "$(command -v python3.12 2>/dev/null || true)"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3,12) else 1)' >/dev/null 2>&1; then
+      PY="$candidate"
+      break
+    fi
+  fi
+done
+[ -n "$PY" ] || fail "Python 3.12 was not found for the website automation runtime."
+
+mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents"
+chmod 700 "$CONFIG_DIR"
+
+# Save only paths in JSON. Secrets stay in a separate chmod-600 env file.
+"$PY" - "$CONFIG_PATH" "$MODEL_ROOT" "$WEB_ROOT" <<'PY'
+import json
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+payload = {
+    "model_root": sys.argv[2],
+    "web_root": sys.argv[3],
+    "schedule": "Mon/Wed/Sat 05:15 local",
+    "model_version": "1.1.3B",
+}
+path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+chmod 600 "$CONFIG_PATH"
+
+has_credentials=0
+if "$PY" - "$WEB_ROOT" "$ENV_PATH" <<'PY' >/dev/null 2>&1
+import os
+import pathlib
+import sys
+import tomllib
+web = pathlib.Path(sys.argv[1])
+env_path = pathlib.Path(sys.argv[2])
+values = dict(os.environ)
+if env_path.exists():
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            values.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+secrets = web / ".streamlit" / "secrets.toml"
+if secrets.exists():
+    try:
+        data = tomllib.loads(secrets.read_text(encoding="utf-8"))
+        for k, v in data.items():
+            if not isinstance(v, dict):
+                values.setdefault(str(k), str(v))
+    except Exception:
+        pass
+def clean(key):
+    value = str(values.get(key, "") or "").strip()
+    return bool(value and not value.upper().startswith("YOUR_") and not value.upper().startswith("REPLACE_ME"))
+raise SystemExit(0 if clean("SUPABASE_URL") and (clean("SUPABASE_SECRET_KEY") or clean("SUPABASE_SERVICE_ROLE_KEY")) else 1)
+PY
+then
+  has_credentials=1
+fi
+
+if [ "$has_credentials" -ne 1 ]; then
+  [ -t 0 ] || fail "Supabase automation credentials are not available locally. Re-run this installer from an interactive terminal."
+  printf '\nA server-side Supabase credential is required so the scheduled model can publish new slates.\n'
+  printf 'The key is stored only in %s with mode 600 and is never committed to Git.\n\n' "$ENV_PATH"
+  read -r -p "SUPABASE_URL: " supabase_url
+  read -r -s -p "SUPABASE_SECRET_KEY (hidden): " supabase_secret
+  printf '\n'
+  [ -n "$supabase_url" ] || fail "SUPABASE_URL cannot be blank."
+  [ -n "$supabase_secret" ] || fail "SUPABASE_SECRET_KEY cannot be blank."
+  umask 077
+  cat > "$ENV_PATH" <<EOF
+SUPABASE_URL=$supabase_url
+SUPABASE_SECRET_KEY=$supabase_secret
+EOF
+  chmod 600 "$ENV_PATH"
+fi
+
+say "Validating scheduler configuration without running the model"
+"$PY" "$WEB_ROOT/scripts/run_cbb_model_refresh.py" --dry-run
+
+say "Installing launchd schedule"
+"$PY" - "$PLIST" "$PY" "$WEB_ROOT" "$LOG_DIR" "$LABEL" <<'PY'
+import pathlib
+import plistlib
+import sys
+plist_path = pathlib.Path(sys.argv[1])
+python = sys.argv[2]
+web_root = sys.argv[3]
+log_dir = pathlib.Path(sys.argv[4])
+label = sys.argv[5]
+payload = {
+    "Label": label,
+    "ProgramArguments": [python, str(pathlib.Path(web_root) / "scripts" / "run_cbb_model_refresh.py")],
+    "WorkingDirectory": web_root,
+    "StartCalendarInterval": [
+        {"Weekday": 2, "Hour": 5, "Minute": 15},
+        {"Weekday": 4, "Hour": 5, "Minute": 15},
+        {"Weekday": 7, "Hour": 5, "Minute": 15},
+    ],
+    "ProcessType": "Background",
+    "RunAtLoad": False,
+    "StandardOutPath": str(log_dir / "scheduled_refresh.log"),
+    "StandardErrorPath": str(log_dir / "scheduled_refresh_error.log"),
+    "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
+}
+with plist_path.open("wb") as handle:
+    plistlib.dump(payload, handle, sort_keys=False)
+PY
+chmod 600 "$PLIST"
+
+launchctl bootout "gui/$UID" "$PLIST" >/dev/null 2>&1 || true
+launchctl bootstrap "gui/$UID" "$PLIST"
+launchctl enable "gui/$UID/$LABEL" >/dev/null 2>&1 || true
+
+say "Installed successfully"
+printf '%s\n' \
+  "Schedule: Monday 05:15 local -> Monday/Tuesday/Wednesday slates" \
+  "          Wednesday 05:15 local -> Wednesday/Thursday/Friday slates" \
+  "          Saturday 05:15 local -> Saturday/Sunday slates" \
+  "Every target is run with --refresh-data and published to Supabase." \
+  "Logs: $LOG_DIR/scheduled_refresh.log" \
+  "State: $LOG_DIR/last_refresh.json" \
+  "Manual dry run: $PY $WEB_ROOT/scripts/run_cbb_model_refresh.py --dry-run" \
+  "Manual live run: $PY $WEB_ROOT/scripts/run_cbb_model_refresh.py" \
+  "Uninstall: bash $WEB_ROOT/scripts/install_cbb_model_refresh_launchd.sh --uninstall"
