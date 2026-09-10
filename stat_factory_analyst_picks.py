@@ -10,7 +10,11 @@ from urllib.request import Request, urlopen
 
 import streamlit as st
 
-from stat_factory_access import stat_factory_feed_token
+try:
+    from stat_factory_access import stat_factory_feed_token
+except ImportError:
+    def stat_factory_feed_token(expected_product: str) -> str:
+        return ""
 
 _FEED_ROOT = "https://stat-factory.com/api/dashboard"
 

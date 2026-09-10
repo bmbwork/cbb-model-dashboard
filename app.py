@@ -63,6 +63,7 @@ from cbb_dashboard.storage import (
     SupabaseSlateStore,
 )
 from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
+from stat_factory_analyst_picks import render_stat_factory_analyst_picks
 
 # Import-compatibility guard for rolling Streamlit deploys. v1.4.3 introduced
 # market_interpretation_text in cbb_dashboard.intelligence. If Streamlit briefly
@@ -1063,7 +1064,7 @@ with st.sidebar:
     else:
         selected_date = None
 
-    public_pages = ["Today's Board", "Market Terminal", "Matchup Explorer", "Team Intelligence", "Performance Lab", "Model Guide"]
+    public_pages = ["Today's Board", "Analyst Picks", "Market Terminal", "Matchup Explorer", "Team Intelligence", "Performance Lab", "Model Guide"]
     pages = public_pages + (["Admin Studio"] if access.authorized else [])
     page = st.radio("Navigate", pages, label_visibility="collapsed")
 
@@ -1086,6 +1087,15 @@ with st.sidebar:
     if store_error:
         st.caption("Publishing storage unavailable")
     st.markdown(f'<div class="small-muted" style="margin-top:1rem">Betting Intelligence v{APP_VERSION}</div>', unsafe_allow_html=True)
+
+if page == "Analyst Picks":
+    st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> ANALYST PICKS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-subtitle">Official human selections published from Stat Factory - separate from the independent CBB forecast engine</div>', unsafe_allow_html=True)
+    st.info("Analyst selections are an editorial layer. They may reference model output and sportsbook context, but they do not feed back into or alter the frozen CBB model forecast.")
+    render_stat_factory_analyst_picks("cbb", heading=False)
+    st.markdown(f'<div class="small-muted" style="margin:2rem 0 .5rem">CBB Model Betting Intelligence v{APP_VERSION} - analyst opinions remain separate from the production model</div>', unsafe_allow_html=True)
+    st.stop()
 
 record: dict[str, Any] | None = None
 if selected_date and records:
