@@ -8,6 +8,7 @@ import pandas as pd
 
 from .ui import esc, fmt_num, fmt_odds, fmt_pct, fmt_spread
 from .market import context_flags, market_features
+from .public_consensus import aggregate_public_books_html
 
 
 DECISION_HOME_SPREAD_COLUMNS = (
@@ -1005,6 +1006,7 @@ def game_card_html(row: pd.Series) -> str:
         <div class="scoreboard compact">{team_row(away, row.get('Projected Away Score'), away_prob, away_rank)}{team_row(home, row.get('Projected Home Score'), home_prob, home_rank)}</div>
         <div class="chip-row">{''.join(chips)}</div>
         {betting_splits_html(row)}
+        {aggregate_public_books_html(row)}
         {betting_snapshot_html(row)}
         {dossier_html(row)}
       </div>

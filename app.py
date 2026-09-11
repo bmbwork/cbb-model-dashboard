@@ -57,6 +57,7 @@ from cbb_dashboard.market import (
 )
 from cbb_dashboard.owlsinsight_odds_provider import OwlsInsightOddsConfig, OwlsInsightOddsProvider
 from cbb_dashboard.owlsinsight_provider import OwlsInsightConfig, OwlsInsightSplitsProvider, annotate_sharp_money_signals, derive_public_betting_notes
+from cbb_dashboard.public_consensus import attach_aggregated_consensus
 from cbb_dashboard.performance import (
     aggregate_metrics,
     confidence_buckets,
@@ -1227,6 +1228,10 @@ def load_public_board(
                     pass
 
                 board = attach_market_to_board(board, display_snapshots, market_context)
+                try:
+                    board = attach_aggregated_consensus(store._public, board, slate_date)
+                except Exception:
+                    pass
                 try:
                     start_source = board["_start_dt"] if "_start_dt" in board.columns else board.get("Start Time UTC", pd.Series(dtype=object))
                     starts = pd.to_datetime(start_source, utc=True, errors="coerce").dropna()
