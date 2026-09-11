@@ -57,6 +57,7 @@ from cbb_dashboard.market import (
 )
 from cbb_dashboard.owlsinsight_odds_provider import OwlsInsightOddsConfig, OwlsInsightOddsProvider
 from cbb_dashboard.owlsinsight_provider import OwlsInsightConfig, OwlsInsightSplitsProvider, annotate_sharp_money_signals, derive_public_betting_notes
+from cbb_dashboard.public_consensus import attach_aggregated_consensus
 from cbb_dashboard.performance import (
     aggregate_metrics,
     confidence_buckets,
@@ -86,7 +87,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -95,6 +96,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+st.markdown(r"""
+<style>
+.ap-tag{display:inline-flex!important;align-items:center!important;padding:.24rem .48rem!important;margin-right:.38rem!important;border-radius:999px!important;border:1px solid rgba(251,191,36,.68)!important;background:linear-gradient(135deg,rgba(251,191,36,.24),rgba(249,115,22,.08))!important;color:#ffe5a0!important;font-size:.72rem!important;font-weight:950!important;letter-spacing:.045em!important;box-shadow:0 0 16px rgba(251,191,36,.10)!important}
+.game-card:has(.ap-tag){border-color:rgba(251,191,36,.25)!important;box-shadow:0 14px 34px rgba(0,0,0,.22),0 0 22px rgba(251,191,36,.035)!important}
+.game-card:has(.ap-tag) .game-head.polished{border-top:1px solid rgba(251,191,36,.12)!important}
+</style>
+""", unsafe_allow_html=True)
 
 
 def secret(name: str, default: Any = None) -> Any:
@@ -253,7 +261,7 @@ def render_home(records: list[dict[str, Any]], store_error: str | None = None) -
     st.markdown(compact_html(home_html), unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c1:
-        metric_card("Latest published slate", latest, "Open Today's Board")
+        metric_card("Latest published slate", latest, "Open Game Board")
     with c2:
         metric_card("Forecasting champion", "V1.1.3B", "Frozen production model")
     with c3:
@@ -262,7 +270,7 @@ def render_home(records: list[dict[str, Any]], store_error: str | None = None) -
         st.info("Publishing storage is not available in this deployment. The methodology guide remains available below.")
     st.markdown('<div class="section-title">How to use the product</div>', unsafe_allow_html=True)
     st.markdown(
-        "**Today's Board** is the fast read of the latest published slate. **Slates by Date** is the main research workbench: choose a date, filter the games by AP ranking, model confidence, sportsbook price, market availability, movement and data quality, then inspect the same polished game cards. **Performance Lab** is for historical model evaluation."
+        "**Game Board** is the main betting workbench: it opens on the latest published slate, lets you choose any saved date, and combines AP ranking, model confidence, sportsbook price, market availability, movement and data-quality filters with the same premium game cards. **Performance Lab** is for historical model evaluation."
     )
     with st.expander("Model and market guide"):
         render_model_guide(compact=True)
@@ -477,15 +485,11 @@ def render_slates_by_date(board: pd.DataFrame, report) -> None:
         st.info("No games match these filters. Widen the odds/ranking/confidence range or choose a different slate date.")
         return
 
-    view = st.segmented_control("Results view", ["Cards", "Table"], default="Cards", label_visibility="collapsed")
-    if view == "Cards":
-        limit_choice = st.segmented_control("Cards shown", ["Top 10", "Top 25", "All"], default="Top 25", label_visibility="collapsed")
-        limit = {"Top 10": 10, "Top 25": 25, "All": len(filtered)}.get(limit_choice, 25)
-        st.markdown(game_card_grid_html(filtered.head(limit)), unsafe_allow_html=True)
-        if limit < len(filtered):
-            st.caption(f"Showing {limit} of {len(filtered)} matching games. Choose All to render the full filtered slate.")
-    else:
-        st.dataframe(_compact_slate_table(filtered), use_container_width=True, hide_index=True, height=min(760, 70 + 35 * max(5, len(filtered))))
+    limit_choice = st.segmented_control("Cards shown", ["Top 10", "Top 25", "All"], default="Top 25", label_visibility="collapsed")
+    limit = {"Top 10": 10, "Top 25": 25, "All": len(filtered)}.get(limit_choice, 25)
+    st.markdown(game_card_grid_html(filtered.head(limit)), unsafe_allow_html=True)
+    if limit < len(filtered):
+        st.caption(f"Showing {limit} of {len(filtered)} matching games. Choose All to render the full filtered slate.")
 
 
 def matchup_label(row: pd.Series) -> str:
@@ -1225,6 +1229,10 @@ def load_public_board(
 
                 board = attach_market_to_board(board, display_snapshots, market_context)
                 try:
+                    board = attach_aggregated_consensus(store._public, board, slate_date)
+                except Exception:
+                    pass
+                try:
                     start_source = board["_start_dt"] if "_start_dt" in board.columns else board.get("Start Time UTC", pd.Series(dtype=object))
                     starts = pd.to_datetime(start_source, utc=True, errors="coerce").dropna()
                     if not starts.empty:
@@ -1259,7 +1267,7 @@ if store is not None:
 with st.sidebar:
     st.markdown('<div class="cbb-kicker">CBB MODEL</div>', unsafe_allow_html=True)
     st.caption("Stat Factory · College Basketball")
-    public_pages = ["Home", "Today's Board", "Slates by Date", "Analyst Picks", "Performance Lab"]
+    public_pages = ["Home", "Game Board", "Pro Picks", "Performance Lab"]
     pages = public_pages + (["Admin Studio"] if access.authorized else [])
     page = st.radio("Navigate", pages, label_visibility="collapsed")
 
@@ -1285,9 +1293,9 @@ with st.sidebar:
 
 if page == "Home":
     render_home(records, store_error)
-elif page == "Analyst Picks":
+elif page == "Pro Picks":
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> ANALYST PICKS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> PRO PICKS</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-subtitle">Official human selections published from Stat Factory · separate from the independent CBB forecast engine.</div>', unsafe_allow_html=True)
     st.info("Analyst selections are an editorial layer. They may reference model output and sportsbook context, but they do not feed back into or alter the frozen CBB model forecast.")
     render_stat_factory_analyst_picks("cbb", heading=False)
@@ -1300,10 +1308,10 @@ else:
     # Preserve storage order: records are returned newest-first by the slate store.
     dates = list(dict.fromkeys(dates))
     selected_date: str | None = dates[0] if dates else None
-    if page == "Slates by Date":
-        st.markdown('<div class="cbb-kicker">SLATES BY DATE</div>', unsafe_allow_html=True)
-        st.markdown('<div class="cbb-title">FIND THE <span style="color:#f97316">SLATE</span></div>', unsafe_allow_html=True)
-        st.markdown('<div class="cbb-subtitle">Choose a published date, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.</div>', unsafe_allow_html=True)
+    if page == "Game Board":
+        st.markdown('<div class="cbb-kicker">GAME BOARD</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cbb-title">CBB <span style="color:#f97316">GAME BOARD</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="cbb-subtitle">Choose the latest or any published slate, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.</div>', unsafe_allow_html=True)
         if dates:
             selected_date = st.selectbox("Slate date", dates, index=0, help="Published decision boards, newest first.")
 
@@ -1312,12 +1320,10 @@ else:
     if board.empty or report is None:
         render_empty_state(store_error)
     else:
-        render_header(report, record, compact=(page == "Slates by Date"))
+        render_header(report, record, compact=(page == "Game Board"))
         if market_error:
             st.caption("Some sportsbook context is temporarily unavailable; the independent model board remains intact.")
-        if page == "Today's Board":
-            render_board(board, report)
-        elif page == "Slates by Date":
+        if page == "Game Board":
             render_slates_by_date(board, report)
 
 st.markdown(

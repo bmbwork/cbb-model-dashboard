@@ -1,0 +1,38 @@
+name: CBB Aggregated Public Consensus Refresh
+
+on:
+  schedule:
+    - cron: "43 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/public_consensus_hourly.yml"
+      - "scripts/collect_public_consensus.py"
+      - "cbb_dashboard/public_consensus.py"
+      - "requirements.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cbb-consensus-writes
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Collect one aggregated public consensus snapshot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: PYTHONPATH=. python scripts/collect_public_consensus.py
