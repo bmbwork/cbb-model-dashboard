@@ -3,6 +3,16 @@ from pathlib import Path
 path = Path("app.py")
 text = path.read_text(encoding="utf-8")
 
+old_route = '''        if page == "Today's Board":
+            render_board(board, report)
+        elif page == "Slates by Date":
+            render_slates_by_date(board, report)'''
+new_route = '''        if page == "Game Board":
+            render_slates_by_date(board, report)'''
+if old_route not in text:
+    raise SystemExit("Missing CBB board routing block")
+text = text.replace(old_route, new_route)
+
 replacements = [
     ('APP_VERSION = "1.6.0"', 'APP_VERSION = "1.6.1"'),
     ('metric_card("Latest published slate", latest, "Open Today\'s Board")', 'metric_card("Latest published slate", latest, "Open Game Board")'),
@@ -15,9 +25,7 @@ replacements = [
     ('<div class="cbb-title">FIND THE <span style="color:#f97316">SLATE</span></div>', '<div class="cbb-title">CBB <span style="color:#f97316">GAME BOARD</span></div>'),
     ('Choose a published date, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.', 'Choose the latest or any published slate, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.'),
     ('render_header(report, record, compact=(page == "Slates by Date"))', 'render_header(report, record, compact=(page == "Game Board"))'),
-    ('        if page == "Today\'s Board":\n            render_board(board, report)\n        elif page == "Slates by Date":\n            render_slates_by_date(board, report)', '        if page == "Game Board":\n            render_slates_by_date(board, report)'),
 ]
-
 for old, new in replacements:
     if old not in text:
         raise SystemExit(f"Missing expected CBB source fragment: {old[:100]}")
@@ -47,7 +55,6 @@ if css_anchor not in text:
 rank_css = '''st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown(r"""
 <style>
-/* Stat Factory ranked-game emphasis: AP status should be obvious at scan speed. */
 .ap-tag{display:inline-flex!important;align-items:center!important;padding:.24rem .48rem!important;margin-right:.38rem!important;border-radius:999px!important;border:1px solid rgba(251,191,36,.68)!important;background:linear-gradient(135deg,rgba(251,191,36,.24),rgba(249,115,22,.08))!important;color:#ffe5a0!important;font-size:.72rem!important;font-weight:950!important;letter-spacing:.045em!important;box-shadow:0 0 16px rgba(251,191,36,.10)!important}
 .game-card:has(.ap-tag){border-color:rgba(251,191,36,.25)!important;box-shadow:0 14px 34px rgba(0,0,0,.22),0 0 22px rgba(251,191,36,.035)!important}
 .game-card:has(.ap-tag) .game-head.polished{border-top:1px solid rgba(251,191,36,.12)!important}
