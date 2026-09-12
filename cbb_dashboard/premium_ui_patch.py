@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import unicodedata
-from functools import lru_cache
 from html import escape
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -14,11 +14,15 @@ import pandas as pd
 _APPLIED = False
 _ESPN_TEAMS = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000"
 _ESPN_TEAM = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{slug}"
+_DIRECTORY: dict[str, str] = {}
+_DIRECTORY_ATTEMPTED_AT = 0.0
+_RETRY_SECONDS = 90.0
+_LOGO_CACHE: dict[str, str] = {}
 
 PREMIUM_CSS = r"""
 <style>
 .cbb-logo-matchup{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.7rem;border:1px solid rgba(249,115,22,.20);border-radius:14px;background:linear-gradient(110deg,rgba(249,115,22,.075),rgba(20,10,12,.82),rgba(251,191,36,.035));padding:.62rem .7rem;margin:0 0 .62rem}.cbb-logo-team{display:flex;align-items:center;gap:.52rem;min-width:0}.cbb-logo-team.home{justify-content:flex-end;text-align:right}.cbb-logo-team img,.cbb-logo-fallback{width:2rem;height:2rem;object-fit:contain;flex:0 0 2rem}.cbb-logo-fallback{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(249,115,22,.10);border:1px solid rgba(249,115,22,.28);color:#ffd0a8;font-size:.62rem;font-weight:900}.cbb-logo-team strong{display:block;color:#fff7f1;font-size:.83rem;line-height:1.1}.cbb-logo-team small{display:block;color:#a18479;font-size:.56rem;margin-top:.13rem}.cbb-logo-vs{color:#936f62;font-size:.62rem;font-weight:900}
-.cbb-money-shell{border:1px solid rgba(249,115,22,.18);border-radius:14px;background:linear-gradient(145deg,rgba(27,11,14,.96),rgba(14,8,10,.98));padding:.68rem .72rem;margin:.64rem 0}.cbb-money-head{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.56rem}.cbb-money-head strong{color:#ffb56f;font-size:.67rem;letter-spacing:.08em}.cbb-money-head span{color:#927b73;font-size:.55rem}.cbb-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}.cbb-money-card{border:1px solid rgba(148,163,184,.10);border-radius:10px;background:rgba(255,255,255,.018);padding:.55rem .58rem}.cbb-money-title{color:#f5ded2;font-size:.59rem;font-weight:900;letter-spacing:.07em;margin-bottom:.33rem}.cbb-money-lead{color:#fff8f4;font-size:.70rem;font-weight:800;line-height:1.24;margin-bottom:.36rem;min-height:1.75em}.cbb-money-bar{height:1.32rem;display:flex;border-radius:7px;overflow:hidden;background:#271a1d;border:1px solid rgba(255,255,255,.06)}.cbb-money-bar .left,.cbb-money-bar .right{display:flex;align-items:center;color:white;font-size:.60rem;font-weight:950;padding:0 .31rem}.cbb-money-bar .left{justify-content:flex-start;background:linear-gradient(90deg,#0b9d62,#20c982)}.cbb-money-bar .right{justify-content:flex-end;background:linear-gradient(90deg,#ec4f61,#f06470)}.cbb-money-labels{display:flex;justify-content:space-between;gap:.3rem;color:#b0988d;font-size:.56rem;margin-top:.28rem}.cbb-ticket-line{color:#927f76;font-size:.54rem;margin-top:.30rem;line-height:1.32}
+.cbb-money-shell{border:1px solid rgba(249,115,22,.18);border-radius:14px;background:linear-gradient(145deg,rgba(27,11,14,.96),rgba(14,8,10,.98));padding:.72rem .76rem;margin:.64rem 0}.cbb-money-head{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.58rem}.cbb-money-head strong{color:#ffb56f;font-size:.67rem;letter-spacing:.08em}.cbb-money-head span{color:#927b73;font-size:.55rem}.cbb-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.cbb-money-card{border:1px solid rgba(148,163,184,.11);border-radius:11px;background:linear-gradient(180deg,rgba(255,255,255,.024),rgba(255,255,255,.012));padding:.58rem .60rem;min-width:0}.cbb-money-title{color:#f5ded2;font-size:.59rem;font-weight:900;letter-spacing:.07em;margin-bottom:.34rem}.cbb-money-lead{color:#fff8f4;font-size:.70rem;font-weight:800;line-height:1.24;margin-bottom:.40rem;min-height:1.75em}.cbb-money-meter{position:relative;height:1.58rem;border-radius:8px;overflow:hidden;background:#271a1d;border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}.cbb-money-fill{position:absolute;top:0;bottom:0;z-index:1}.cbb-money-fill.left{left:0;background:linear-gradient(90deg,#088f59,#20c982)}.cbb-money-fill.right{right:0;background:linear-gradient(90deg,#e84b5e,#f06470)}.cbb-money-pct{position:absolute;top:50%;transform:translateY(-50%);z-index:3;color:#fff;font-size:.61rem;font-weight:950;line-height:1;padding:.18rem .30rem;border-radius:999px;background:rgba(8,10,12,.68);border:1px solid rgba(255,255,255,.13);text-shadow:0 1px 2px rgba(0,0,0,.65);white-space:nowrap}.cbb-money-pct.left{left:.24rem}.cbb-money-pct.right{right:.24rem}.cbb-money-labels{display:flex;justify-content:space-between;gap:.42rem;color:#b9a197;font-size:.56rem;margin-top:.31rem}.cbb-money-labels span{min-width:0;overflow-wrap:anywhere}.cbb-ticket-line{color:#927f76;font-size:.54rem;margin-top:.32rem;line-height:1.34}.cbb-money-legend{display:flex;gap:.5rem;align-items:center;color:#806c64;font-size:.51rem;margin-top:.45rem}.cbb-money-legend i{display:inline-block;width:.42rem;height:.42rem;border-radius:50%;margin-right:.18rem}.cbb-money-legend .green{background:#20c982}.cbb-money-legend .red{background:#f06470}
 @media(max-width:900px){.cbb-money-grid{grid-template-columns:1fr}.cbb-logo-team img,.cbb-logo-fallback{width:1.72rem;height:1.72rem;flex-basis:1.72rem}.cbb-logo-team strong{font-size:.75rem}}
 </style>
 """
@@ -35,7 +39,7 @@ def _fetch_json(url: str) -> dict:
         return {}
     try:
         req = Request(url, headers={"User-Agent": "StatFactory/1.0"})
-        with urlopen(req, timeout=1.8) as response:
+        with urlopen(req, timeout=6.0) as response:
             return json.loads(response.read().decode("utf-8"))
     except Exception:
         return {}
@@ -48,10 +52,18 @@ def _team_record(team: dict) -> tuple[list[str], str]:
     return [x for x in (_norm(v) for v in fields) if x], href
 
 
-@lru_cache(maxsize=1)
 def _team_directory() -> dict[str, str]:
+    global _DIRECTORY, _DIRECTORY_ATTEMPTED_AT
+    if _DIRECTORY:
+        return _DIRECTORY
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return {}
+    now = time.time()
+    if _DIRECTORY_ATTEMPTED_AT and now - _DIRECTORY_ATTEMPTED_AT < _RETRY_SECONDS:
+        return {}
+    _DIRECTORY_ATTEMPTED_AT = now
     payload = _fetch_json(_ESPN_TEAMS)
-    out: dict[str, str] = {}
+    directory: dict[str, str] = {}
     sports = payload.get("sports") or []
     leagues = sports[0].get("leagues") if sports and isinstance(sports[0], dict) else []
     entries = leagues[0].get("teams") if leagues and isinstance(leagues[0], dict) else []
@@ -62,25 +74,38 @@ def _team_directory() -> dict[str, str]:
         keys, href = _team_record(team)
         if href:
             for key in keys:
-                out.setdefault(key, href)
-    return out
+                directory.setdefault(key, href)
+    if directory:
+        _DIRECTORY = directory
+    return _DIRECTORY
 
 
-@lru_cache(maxsize=512)
 def team_logo_url(team_name: str) -> str:
     key = _norm(team_name)
     if not key:
         return ""
-    aliases = {"miami fl": "miami hurricanes", "miami florida": "miami hurricanes", "nc state": "nc state wolfpack", "usc": "usc trojans", "ole miss": "ole miss rebels"}
+    if key in _LOGO_CACHE:
+        return _LOGO_CACHE[key]
+    aliases = {
+        "miami fl": "miami hurricanes",
+        "miami florida": "miami hurricanes",
+        "nc state": "nc state wolfpack",
+        "usc": "usc trojans",
+        "ole miss": "ole miss rebels",
+    }
     directory = _team_directory()
     for candidate in (key, aliases.get(key, "")):
         if candidate and directory.get(candidate):
-            return directory[candidate]
-    payload = _fetch_json(_ESPN_TEAM.format(slug=quote(re.sub(r"\s+", "-", key))))
+            _LOGO_CACHE[key] = directory[candidate]
+            return _LOGO_CACHE[key]
+    slug = quote(re.sub(r"\s+", "-", aliases.get(key, key)))
+    payload = _fetch_json(_ESPN_TEAM.format(slug=slug))
     team = payload.get("team") if isinstance(payload, dict) else None
     if isinstance(team, dict):
         _, href = _team_record(team)
-        return href
+        if href:
+            _LOGO_CACHE[key] = href
+            return href
     return ""
 
 
@@ -112,14 +137,22 @@ def _money_card(title: str, left_label: str, lm: object, lt: object, right_label
     left, right = _finite(lm), _finite(rm)
     if left is None or right is None or abs(left + right - 100.0) > 3.0:
         return ""
-    width = max(0.0, min(100.0, left))
+    total = left + right
+    left_width = 50.0 if total <= 0 else max(0.0, min(100.0, 100.0 * left / total))
+    right_width = 100.0 - left_width
     leader, leader_pct = (left_label, left) if left >= right else (right_label, right)
     lead = f"Money heavily favors {leader}" if leader_pct >= 75 else (f"Money favors {leader}" if leader_pct >= 60 else f"Money leans {leader}")
     left_t, right_t = _finite(lt), _finite(rt)
     ticket = "Ticket split unavailable"
     if left_t is not None and right_t is not None and abs(left_t + right_t - 100.0) <= 3.0:
         ticket = f"Tickets: {left_label} {left_t:.0f}% · {right_label} {right_t:.0f}%"
-    return '<div class="cbb-money-card">' + f'<div class="cbb-money-title">{escape(title)}</div><div class="cbb-money-lead">{escape(lead)}</div>' + f'<div class="cbb-money-bar"><span class="left" style="width:{width:.1f}%">{left:.0f}%</span><span class="right" style="width:{100-width:.1f}%">{right:.0f}%</span></div>' + f'<div class="cbb-money-labels"><span>{escape(left_label)}</span><span>{escape(right_label)}</span></div><div class="cbb-ticket-line">{escape(ticket)}</div></div>'
+    meter = (
+        f'<div class="cbb-money-meter" aria-label="{escape(title)} handle share: {left:.0f}% versus {right:.0f}%">'
+        f'<span class="cbb-money-fill left" style="width:{left_width:.1f}%"></span>'
+        f'<span class="cbb-money-fill right" style="width:{right_width:.1f}%"></span>'
+        f'<span class="cbb-money-pct left">{left:.0f}%</span><span class="cbb-money-pct right">{right:.0f}%</span></div>'
+    )
+    return '<div class="cbb-money-card">' + f'<div class="cbb-money-title">{escape(title)}</div><div class="cbb-money-lead">{escape(lead)}</div>' + meter + f'<div class="cbb-money-labels"><span>{escape(left_label)}</span><span>{escape(right_label)}</span></div><div class="cbb-ticket-line">{escape(ticket)}</div></div>'
 
 
 def premium_betting_splits_html(row: pd.Series) -> str:
@@ -139,7 +172,8 @@ def premium_betting_splits_html(row: pd.Series) -> str:
     source = str(row.get("_market_split_source_label") or "Owl Insight")
     if not cards:
         return '<div class="split-strip empty"><div class="split-strip-head"><span>BETTING SPLITS</span><em>No validated money split snapshot for this matchup</em></div></div>'
-    return f'<div class="cbb-money-shell"><div class="cbb-money-head"><strong>BETTING SPLITS · {escape(source.upper())}</strong><span>Money = handle share · tickets shown below</span></div><div class="cbb-money-grid">{"".join(cards)}</div></div>'
+    legend = '<div class="cbb-money-legend"><span><i class="green"></i>left/away or over</span><span><i class="red"></i>right/home or under</span></div>'
+    return f'<div class="cbb-money-shell"><div class="cbb-money-head"><strong>BETTING SPLITS · {escape(source.upper())}</strong><span>Money = handle share · tickets shown below</span></div><div class="cbb-money-grid">{"".join(cards)}</div>{legend}</div>'
 
 
 def _snapshot_value(row: pd.Series, *names: str) -> float | None:
@@ -156,6 +190,7 @@ def _patch_market_attach() -> None:
     if getattr(market.attach_market_to_board, "_sf_premium", False):
         return
     original = market.attach_market_to_board
+
     def patched(board: pd.DataFrame, snapshots: pd.DataFrame, context: pd.DataFrame | None = None) -> pd.DataFrame:
         out = original(board, snapshots, context)
         new_fields = ("_market_current_away_spread", "_market_ml_away_ticket_pct", "_market_ml_away_money_pct", "_market_total_under_ticket_pct", "_market_total_under_money_pct")
@@ -182,6 +217,7 @@ def _patch_market_attach() -> None:
                 game_rows = game_rows[game_rows[time_col].isna() | (game_rows[time_col] < start)]
             if game_rows.empty:
                 continue
+
             def latest(kind: str) -> pd.Series | None:
                 rows = game_rows[game_rows[market_col].astype(str).str.lower().eq(kind)].copy()
                 if rows.empty:
@@ -189,6 +225,7 @@ def _patch_market_attach() -> None:
                 if time_col:
                     rows = rows.sort_values(time_col)
                 return rows.iloc[-1]
+
             spread = latest("spread")
             ml = latest("moneyline")
             total = latest("total")
@@ -201,6 +238,7 @@ def _patch_market_attach() -> None:
                 out.at[idx, "_market_total_under_ticket_pct"] = _snapshot_value(total, "Under Ticket %", "under_ticket_pct")
                 out.at[idx, "_market_total_under_money_pct"] = _snapshot_value(total, "Under Money %", "under_money_pct")
         return out
+
     patched._sf_premium = True
     market.attach_market_to_board = patched
 
@@ -211,12 +249,14 @@ def _patch_intelligence() -> None:
         return
     intelligence.betting_splits_html = premium_betting_splits_html
     original_card = intelligence.game_card_html
+
     def patched_card(row: pd.Series) -> str:
         base = original_card(row)
         end = base.find(">")
         if end < 0:
             return base
         return base[: end + 1] + _matchup_banner(row) + base[end + 1 :]
+
     patched_card._sf_premium = True
     intelligence.game_card_html = patched_card
 
