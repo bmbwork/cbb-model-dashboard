@@ -53,6 +53,25 @@ def test_existing_context_has_priority_over_directory_lookup():
     assert enriched.iloc[0]["Away Conference"] == "League X"
 
 
+def test_independents_never_become_a_false_conference_game():
+    directory = {
+        "independent a": "Division I Independents",
+        "independent b": "Division I Independents",
+        "purdue": "Big Ten Conference",
+    }
+    board = pd.DataFrame(
+        [
+            {"Away Team": "Independent A", "Home Team": "Independent B"},
+            {"Away Team": "Independent A", "Home Team": "Purdue"},
+        ]
+    )
+    enriched = attach_conference_context(board, directory=directory)
+    assert enriched["_conference_known"].tolist() == [True, True]
+    assert enriched["Conference Game"].tolist() == [False, False]
+    assert len(filter_conference_status(enriched, NON_CONFERENCE_GAMES)) == 2
+    assert filter_conference_status(enriched, CONFERENCE_GAMES).empty
+
+
 def test_money_bar_uses_overlay_labels_for_extreme_splits():
     html = premium_ui_patch._money_card("SPREAD MONEY", "Away +7.0", 9, 35, "Home -7.0", 91, 65)
     assert "cbb-money-meter" in html
