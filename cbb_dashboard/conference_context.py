@@ -27,6 +27,11 @@ def _norm(value: object) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 
 
+def _is_independent(conference: object) -> bool:
+    key = _norm(conference)
+    return "independent" in key
+
+
 def _conference_name(node: dict) -> str:
     for key in ("name", "shortName", "abbreviation", "displayName"):
         value = str(node.get(key) or "").strip()
@@ -142,10 +147,16 @@ def attach_conference_context(frame: pd.DataFrame, directory: dict[str, str] | N
         home = _row_value(row, ("Home Conference", "home_conference", "_home_conference")) or _lookup(row.get("Home Team"), directory)
         away = _row_value(row, ("Away Conference", "away_conference", "_away_conference")) or _lookup(row.get("Away Team"), directory)
         is_known = bool(home and away)
+        same_conference = bool(
+            is_known
+            and _norm(home) == _norm(away)
+            and not _is_independent(home)
+            and not _is_independent(away)
+        )
         homes.append(home)
         aways.append(away)
         known.append(is_known)
-        conference_game.append(bool(is_known and _norm(home) == _norm(away)))
+        conference_game.append(same_conference)
     out["Home Conference"] = homes
     out["Away Conference"] = aways
     out["Conference Game"] = conference_game
