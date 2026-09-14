@@ -105,7 +105,8 @@ PY
 PY="$RUNTIME_PY"
 
 say "Migrating protected publish credentials to the headless env file when available"
-"$PY" - "$SOURCE_WEB_ROOT" "$ENV_PATH" <<'PY'
+credential_status=0
+if "$PY" - "$SOURCE_WEB_ROOT" "$ENV_PATH" <<'PY'
 import os
 import pathlib
 import shlex
@@ -150,7 +151,11 @@ if url and secret:
     raise SystemExit(0)
 raise SystemExit(1)
 PY
-credential_status=$?
+then
+  credential_status=0
+else
+  credential_status=$?
+fi
 
 if [ "$credential_status" -ne 0 ]; then
   [ -t 0 ] || fail "Supabase automation credentials are not available locally. Re-run this installer from an interactive terminal."
