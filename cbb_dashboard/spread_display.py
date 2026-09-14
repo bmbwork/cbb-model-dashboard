@@ -4,9 +4,12 @@ A saved sportsbook selection is graded as SPREAD. With no such quote, the frozen
 fair line can still be evaluated, but is labeled MODEL LINE, never an ATS wager.
 """
 from __future__ import annotations
-import math
+
 from html import escape
+import inspect
+import math
 from typing import Any
+
 import numpy as np
 
 SAVED_HOME_LINES = ('Bet Home Spread', 'Taken Home Spread', 'Decision Home Spread', 'Market Home Spread', 'Sportsbook Home Spread')
@@ -87,5 +90,21 @@ def result_banner(row) -> str:
 
 
 def install_spread_display() -> None:
+    """Install current card renderers on every Streamlit rerun.
+
+    The public app imports ``game_card_grid_html`` before calling this installer.
+    Streamlit can retain imported modules across a source sync, so updating the
+    module function alone can leave that app-level reference stale.  The already
+    established spread installer is called on every rerun; use that stable hook to
+    install the summary wrapper and rebind the caller's imported grid reference.
+    """
     from . import intelligence
+    from .board_summary_runtime import install_board_summary_runtime
+
     intelligence._result_banner=result_banner
+    install_board_summary_runtime()
+
+    frame = inspect.currentframe()
+    caller = frame.f_back if frame is not None else None
+    if caller is not None and 'game_card_grid_html' in caller.f_globals:
+        caller.f_globals['game_card_grid_html'] = intelligence.game_card_grid_html
