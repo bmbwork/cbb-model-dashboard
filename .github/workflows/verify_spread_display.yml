@@ -50,7 +50,9 @@ jobs:
           board=attach_grading(board,pd.DataFrame(r.get('grading_json') or []))
           row=board[(board['Away Team']=='Illinois')&(board['Home Team']=='UConn')].iloc[0]
           result=graded_spread(row)
-          assert result['result']=='L' and result['kind']=='model' and abs(result['clearance']+13.3)<1e-7,result
+          assert result['result']=='L' and result['kind']=='model',result
+          assert abs(result['clearance'] - (62 - 71 + float(row['Fair Spread']))) < 1e-9,result
+          assert round(result['clearance'],1)==-13.3
           install_spread_display();html=game_card_grid_html(board)
           assert 'MODEL LINE <strong>L</strong>' in html and 'data:image/png;base64,' in html
           pathlib.Path('cbb-graded-spread.html').write_text(GLOBAL_CSS+PREMIUM_CSS+html)
