@@ -4,7 +4,7 @@ This repository owns the website/publishing automation around the frozen **CBB V
 
 ## Forecast cadence
 
-`com.statfactory.cbb-model-refresh` is a lightweight macOS `launchd` dispatcher that wakes every 30 minutes and once at login.
+`com.statfactory.cbb-model-refresh` is a lightweight macOS `launchd` dispatcher that polls every 30 minutes.
 
 For each Chicago game date it maintains three immutable forecast stages:
 
@@ -12,7 +12,7 @@ For each Chicago game date it maintains three immutable forecast stages:
 - **MID** — first tip minus 10 hours, but never earlier than 06:15 CT. If no published board exists yet, 08:15 CT is the fallback and is only eligible through 10:00 CT.
 - **LATE** — first tip minus 3 hours and never after first tip.
 
-If the Mac sleeps through EARLY, the dispatcher catches that stage up after wake only while it is still earlier than the MID window. Once MID is due, EARLY is superseded rather than backfilled. Once LATE is due, any unfinished EARLY/MID stage is superseded. Completed stages never duplicate.
+If the Mac sleeps through EARLY, the next scheduled poll after wake catches that stage up only while it is still earlier than the MID window. Once MID is due, EARLY is superseded rather than backfilled. Once LATE is due, any unfinished EARLY/MID stage is superseded. Completed stages never duplicate.
 
 The dispatcher state file is:
 
@@ -31,6 +31,8 @@ Managed locations:
 - protected publishing env: `~/.config/stat_factory/cbb_automation.env`
 
 The model-refresh installer stages the current dashboard automation code and the private frozen champion into Application Support. It rebuilds the champion's Python 3.12 virtual environment from the champion's own `requirements.txt`, verifies the staged V1.1.3B source files byte-for-byte by SHA-256, and then validates the automation layer before installing the LaunchAgent.
+
+Installing or reloading either CBB LaunchAgent does **not** execute a forecast, grade a game, or write results. The installers perform dry-run validation only; normal work begins on the next 30-minute `StartInterval` poll.
 
 The original Git checkout and private champion source can remain on Desktop for manual development/inspection. After installation they are source copies only; the background jobs point at the managed Application Support copies.
 
