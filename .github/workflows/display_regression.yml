@@ -20,4 +20,4 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt pytest
-      - run: python -m pytest -q tests/test_spread_display.py tests/test_bundled_logos.py tests/test_logo_scoreboard_and_splits.py tests/test_conference_moneybar_logo_qa.py
+      - run: python -m pytest -q tests/test_board_record_summary.py tests/test_spread_display.py tests/test_bundled_logos.py tests/test_logo_scoreboard_and_splits.py tests/test_conference_moneybar_logo_qa.py
