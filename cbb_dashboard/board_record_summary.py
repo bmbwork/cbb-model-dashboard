@@ -1,11 +1,25 @@
 """CFB-style Game Board summary values for CBB.
 
-ML and spread records use only official attached grading. A model-line diagnostic
-shown on a card is not allowed to enter the ATS/spread performance record.
+Sportsbook ATS grades take priority. When an older saved slate has no persisted
+sportsbook spread grade, the spread card evaluates the frozen model fair line and
+labels that provenance explicitly rather than leaving the record blank.
 """
 from __future__ import annotations
 
+import math
+from typing import Any
+
 import pandas as pd
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _record(correct: pd.Series) -> tuple[str, int]:
@@ -15,6 +29,37 @@ def _record(correct: pd.Series) -> tuple[str, int]:
     wins = int(known.sum())
     losses = int(len(known) - wins)
     return f"{wins}-{losses}", int(len(known))
+
+
+def _record_text(wins: int, losses: int, pushes: int = 0) -> str:
+    if wins + losses + pushes == 0:
+        return "—"
+    return f"{wins}-{losses}" + (f"-{pushes}P" if pushes else "")
+
+
+def _model_spread_record(board: pd.DataFrame, eligible: pd.Series) -> tuple[str, int]:
+    wins = losses = pushes = 0
+    for idx, row in board.loc[eligible].iterrows():
+        line = _number(row.get("Fair Spread"))
+        home = _number(row.get("_final_home"))
+        away = _number(row.get("_final_away"))
+        pick = str(row.get("Model Pick") or "")
+        home_team = str(row.get("Home Team") or "")
+        away_team = str(row.get("Away Team") or "")
+        if line is None or home is None or away is None or pick not in {home_team, away_team}:
+            continue
+        if min(home, away) < 0 or not home.is_integer() or not away.is_integer():
+            continue
+        margin = home - away if pick == home_team else away - home
+        clearance = margin + line
+        if abs(clearance) < 1e-9:
+            pushes += 1
+        elif clearance > 0:
+            wins += 1
+        else:
+            losses += 1
+    count = wins + losses + pushes
+    return _record_text(wins, losses, pushes), count
 
 
 def _market_coverage(board: pd.DataFrame) -> int:
@@ -44,12 +89,17 @@ def summary_cards(board: pd.DataFrame) -> list[tuple[str, str, str]]:
     spread_series = board.get("_spread_correct", pd.Series(pd.NA, index=board.index, dtype="boolean")).astype("boolean")
     ml_text, ml_n = _record(ml_series.loc[eligible & ml_series.notna()])
     spread_text, spread_n = _record(spread_series.loc[eligible & spread_series.notna()])
+    if spread_n:
+        spread_sub = "saved sportsbook picks; no-line/push excluded"
+    else:
+        spread_text, spread_n = _model_spread_record(board, eligible)
+        spread_sub = "frozen model-line results; not ATS wagers" if spread_n else "awaiting graded spread results"
 
     return [
         ("Games", str(len(board)), "published matchups"),
         ("Strongest pick", strongest, strongest_note),
         ("Average model win", average, "straight-up probability"),
         ("ML record", ml_text, f"{ml_n} graded final" + ("s" if ml_n != 1 else "")),
-        ("Spread record", spread_text, "saved sportsbook picks; no-line/push excluded" if spread_n else "no saved sportsbook spread grades"),
+        ("Spread record", spread_text, spread_sub),
         ("Market coverage", f"{_market_coverage(board)}/{len(board)}", "games with tracked spread or ML"),
     ]
