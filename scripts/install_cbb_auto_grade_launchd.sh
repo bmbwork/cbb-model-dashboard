@@ -28,18 +28,18 @@ fi
 [ -f "$STAGER" ] || fail "Background runtime staging helper is missing. Pull GitHub main first."
 [ -f "$CONFIG_PATH" ] || fail "CBB automation config is missing. Run install_cbb_model_refresh_launchd.sh once first."
 
-readarray -t CONFIG_VALUES < <(python3 - "$CONFIG_PATH" <<'PY'
+config_value() {
+  python3 - "$CONFIG_PATH" "$1" <<'PY'
 import json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-data = json.loads(p.read_text(encoding="utf-8"))
-print(data.get("web_root", ""))
-print(data.get("model_root", ""))
-print(data.get("runtime_policy", ""))
+path = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+data = json.loads(path.read_text(encoding="utf-8"))
+print(str(data.get(key) or ""))
 PY
-)
-WEB_ROOT="${CONFIG_VALUES[0]:-}"
-MODEL_ROOT="${CONFIG_VALUES[1]:-}"
-RUNTIME_POLICY="${CONFIG_VALUES[2]:-}"
+}
+WEB_ROOT="$(config_value web_root)"
+MODEL_ROOT="$(config_value model_root)"
+RUNTIME_POLICY="$(config_value runtime_policy)"
 [ "$WEB_ROOT" = "$EXPECTED_WEB_ROOT" ] || fail "CBB config still points at a legacy/Desktop dashboard runtime. Run scripts/install_cbb_model_refresh_launchd.sh first."
 [ "$RUNTIME_POLICY" = "managed_app_support_v1" ] || fail "CBB config has not been migrated to the managed background runtime. Run the model-refresh installer first."
 [ -n "$MODEL_ROOT" ] || fail "model_root is missing from $CONFIG_PATH"
