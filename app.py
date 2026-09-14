@@ -90,7 +90,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",

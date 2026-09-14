@@ -173,7 +173,8 @@ def team_logo_url(team_name: str, game_date: str = "") -> str:
 
 
 def _logo_html(team: str, game_date: str = "") -> str:
-    url = team_logo_url(team, game_date)
+    from .team_logos import bundled_logo_source
+    url = bundled_logo_source(team) or team_logo_url(team, game_date)
     if url:
         return f'<img src="{escape(url, quote=True)}" alt="{escape(team)} logo" loading="lazy">'
     letters = "".join(part[:1] for part in str(team).split()[:2]).upper() or "SF"
