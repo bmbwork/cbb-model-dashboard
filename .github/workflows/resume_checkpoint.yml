@@ -1,0 +1,31 @@
+name: Resume checkpoint
+on:
+  push:
+    branches: [fix/automation-runtime-resume-20260913]
+    paths: [.github/workflows/resume_checkpoint.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture tracked source and scheduler telemetry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/checkpoint"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/checkpoint/source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/checkpoint/revision.txt"
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" --jq '[.workflows[]|{name,path,state}]' > "$RUNNER_TEMP/checkpoint/workflows.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=main&per_page=100" --jq '[.workflow_runs[]|{id,name,event,path,head_sha,status,conclusion,created_at,run_started_at,updated_at}]' > "$RUNNER_TEMP/checkpoint/runs.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resume-checkpoint
+          path: ${{ runner.temp }}/checkpoint
+          retention-days: 1
+          if-no-files-found: error
