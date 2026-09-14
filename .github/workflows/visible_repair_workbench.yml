@@ -17,32 +17,22 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -q -r requirements.txt Pillow pytest
-      - name: Resolve exact Red Flash identity from the historical scoreboard
+      - name: Bundle the verified official Red Flash identity
         shell: python
         run: |
-          import hashlib,io,json,pathlib
+          import hashlib,io,json
           import requests
           from PIL import Image
           from cbb_dashboard.team_logos import ASSET_ROOT
-          source='https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260207&groups=50&limit=500'
-          response=requests.get(source,timeout=40);response.raise_for_status()
-          candidates=[]
-          for event in response.json().get('events',[]):
-              for game in event.get('competitions',[]):
-                  for competitor in game.get('competitors',[]):
-                      team=competitor.get('team',{})
-                      if 'red flash' in str(team.get('displayName','')).lower(): candidates.append(team)
-          identities={str(t['id']):t for t in candidates};assert len(identities)==1, identities
-          ident,team=next(iter(identities.items()));assert ident.isdigit()
-          url=team.get('logo','');assert url.startswith('https://a.espncdn.com/')
+          source='https://www.espn.com/mens-college-basketball/team/roster/_/id/2598/st-francis-u-red-flash'
+          ident='2598';url='https://a.espncdn.com/i/teamlogos/ncaa/500/2598.png'
           result=requests.get(url,timeout=20);result.raise_for_status()
           image=Image.open(io.BytesIO(result.content));image.load();image=image.convert('RGBA');image.thumbnail((128,128))
           asset=ASSET_ROOT/(ident+'.png');image.save(asset,optimize=True)
           payload=json.loads((ASSET_ROOT/'directory.json').read_text()); records={r['id']:r for r in payload['teams']}
-          aliases=[team.get(k) for k in ('location','displayName','shortDisplayName','abbreviation','slug') if team.get(k)]+['St. Francis (PA)']
-          records[ident]={'id':ident,'display_name':team['displayName'],'aliases':sorted(set(aliases)),'source_url':url,'asset':ident+'.png','sha256':hashlib.sha256(asset.read_bytes()).hexdigest(),'historical_identity_source':source}
+          aliases=['St. Francis (PA)','Saint Francis (PA)','Saint Francis','Saint Francis Red Flash','St. Francis U','SFPA']
+          records[ident]={'id':ident,'display_name':'Saint Francis Red Flash','aliases':aliases,'source_url':url,'asset':ident+'.png','sha256':hashlib.sha256(asset.read_bytes()).hexdigest(),'historical_identity_source':source}
           payload['teams']=list(records.values());(ASSET_ROOT/'directory.json').write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n')
-          print(json.dumps({'resolved':'St. Francis (PA)','source_name':team['displayName'],'team_id':ident}))
       - run: python -m pytest -q tests/test_bundled_logos.py
       - name: Verify every currently published team has bundled image bytes
         env:
