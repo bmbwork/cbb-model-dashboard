@@ -1,4 +1,5 @@
 name: Live CBB summary binding hotfix
+# One-time branch runner; remove before merge.
 on:
   push:
     branches: [fix/live-summary-runtime-binding-20260914]
