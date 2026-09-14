@@ -13,7 +13,7 @@ def frame():
 
 def test_summary_html_has_exact_six_cfb_style_cards():
     html=_summary_html(frame())
-    assert html.count('cbb-record-summary-card')==6
+    assert html.count('class="cbb-record-summary-card"')==6
     assert 'ML record' in html and '>1-1<' in html
     assert 'Spread record' in html and '>1-1<' in html
     assert 'Market coverage' in html and '>2/2<' in html
@@ -42,4 +42,4 @@ def test_per_rerun_spread_installer_rebinds_stale_app_level_grid_reference(monke
     assert globals()['game_card_grid_html'] is intelligence.game_card_grid_html
     html=globals()['game_card_grid_html'](frame())
     assert 'cbb-record-summary-grid' in html
-    assert html.count('cbb-record-summary-card')==6
+    assert html.count('class="cbb-record-summary-card"')==6
