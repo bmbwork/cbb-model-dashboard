@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,9 +17,12 @@ assert "cbb_dashboard.premium_ui_patch" not in sys.modules
 assert "cbb_dashboard.conference_filter_runtime" not in sys.modules
 print("headless storage import ok")
 '''
+    env = dict(os.environ)
+    env["STAT_FACTORY_HEADLESS_AUTOMATION"] = "1"
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
+        env=env,
         text=True,
         capture_output=True,
         check=False,
