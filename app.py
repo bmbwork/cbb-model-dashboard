@@ -90,7 +90,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.6.2"
+APP_VERSION = "1.6.3"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -98,6 +98,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+from cbb_dashboard.spread_display import install_spread_display
+install_spread_display()
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown(r"""
 <style>
