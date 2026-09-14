@@ -32,7 +32,11 @@ def _summary_html(frame: pd.DataFrame) -> str:
         f'<div class="cbb-record-summary-sub">{escape(sub)}</div></div>'
         for label, value, sub in cards
     )
-    return f'<div class="cbb-record-summary-grid">{body}</div>'
+    # Keep the small component stylesheet next to the component markup. Streamlit
+    # can keep app.py's imported GLOBAL_CSS string across a source-sync rerun, so
+    # relying only on mutating ui.GLOBAL_CSS can leave a newly installed component
+    # unstyled until the worker restarts.
+    return SUMMARY_CSS + f'<div class="cbb-record-summary-grid">{body}</div>'
 
 
 def install_board_summary_runtime() -> None:
