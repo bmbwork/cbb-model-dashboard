@@ -5098,6 +5098,22 @@
       "id": "2368",
       "sha256": "162eb530165c691ddcceeb0635eeb1c39b49c0edb0bf454925bc2d9382edc298",
       "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/2368.png"
+    },
+    {
+      "aliases": [
+        "St. Francis (PA)",
+        "Saint Francis (PA)",
+        "Saint Francis",
+        "Saint Francis Red Flash",
+        "St. Francis U",
+        "SFPA"
+      ],
+      "asset": "2598.png",
+      "display_name": "Saint Francis Red Flash",
+      "historical_identity_source": "https://www.espn.com/mens-college-basketball/team/roster/_/id/2598/st-francis-u-red-flash",
+      "id": "2598",
+      "sha256": "70b1db991f5968f71e4bb30044b4dd043fb53af23781aec308feac974c0540bb",
+      "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/2598.png"
     }
   ]
 }
