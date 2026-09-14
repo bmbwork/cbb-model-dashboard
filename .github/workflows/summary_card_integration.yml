@@ -1,9 +1,11 @@
 name: Summary card integration
-# Branch-only one-time integration runner; removed before merge.
+# Same-repo one-time integration runner; removed before merge.
 on:
   push:
     branches: [feat/cfb-style-summary-record-cards-20260914]
     paths: [.github/workflows/summary_card_integration.yml]
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 jobs:
@@ -78,7 +80,7 @@ jobs:
           git config user.name 'Stat Factory maintenance'
           git config user.email 'noreply@users.noreply.github.com'
           git add app.py
-          git commit -m 'Show CFB-style record cards on the CBB Game Board'
+          git diff --cached --quiet || git commit -m 'Show CFB-style record cards on the CBB Game Board'
           git push origin HEAD:feat/cfb-style-summary-record-cards-20260914
       - uses: actions/upload-artifact@v4
         if: always()
