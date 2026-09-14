@@ -44,6 +44,8 @@ def test_matchup_banner_passes_target_date_to_logo_resolver(monkeypatch):
         captured.append((team, game_date))
         return f"https://example.test/{team.replace(' ', '-').lower()}.png"
 
+    from cbb_dashboard import team_logos
+    monkeypatch.setattr(team_logos, "bundled_logo_source", lambda team: "")
     monkeypatch.setattr(premium_ui_patch, "team_logo_url", fake_logo)
     row = pd.Series({"Away Team": "La Salle", "Home Team": "Saint Louis", "Target Date": "2026-02-07"})
     html = premium_ui_patch._matchup_banner(row)
