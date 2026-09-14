@@ -14,8 +14,11 @@ import pandas as pd
 _APPLIED = False
 _ESPN_TEAMS = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000"
 _ESPN_TEAM = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{slug}"
+_ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates={date}&limit=500"
 _DIRECTORY: dict[str, str] = {}
 _DIRECTORY_ATTEMPTED_AT = 0.0
+_SCOREBOARD_DIRECTORIES: dict[str, dict[str, str]] = {}
+_SCOREBOARD_ATTEMPTED_AT: dict[str, float] = {}
 _RETRY_SECONDS = 90.0
 _LOGO_CACHE: dict[str, str] = {}
 
@@ -47,9 +50,23 @@ def _fetch_json(url: str) -> dict:
 
 def _team_record(team: dict) -> tuple[list[str], str]:
     logos = team.get("logos") or []
-    href = str(logos[0].get("href") or "") if logos and isinstance(logos[0], dict) else ""
+    href = str(team.get("logo") or "")
+    if not href and logos and isinstance(logos[0], dict):
+        href = str(logos[0].get("href") or "")
+    team_id = str(team.get("id") or "").strip()
+    if not href and team_id.isdigit():
+        href = f"https://a.espncdn.com/i/teamlogos/ncaa/500/{team_id}.png"
     fields = [team.get(k) for k in ("displayName", "shortDisplayName", "name", "nickname", "location", "abbreviation", "slug")]
     return [x for x in (_norm(v) for v in fields) if x], href
+
+
+def _add_team_to_directory(directory: dict[str, str], team: object) -> None:
+    if not isinstance(team, dict):
+        return
+    keys, href = _team_record(team)
+    if href:
+        for key in keys:
+            directory.setdefault(key, href)
 
 
 def _team_directory() -> dict[str, str]:
@@ -69,18 +86,55 @@ def _team_directory() -> dict[str, str]:
     entries = leagues[0].get("teams") if leagues and isinstance(leagues[0], dict) else []
     for wrapper in entries or []:
         team = wrapper.get("team", wrapper) if isinstance(wrapper, dict) else {}
-        if not isinstance(team, dict):
-            continue
-        keys, href = _team_record(team)
-        if href:
-            for key in keys:
-                directory.setdefault(key, href)
+        _add_team_to_directory(directory, team)
     if directory:
         _DIRECTORY = directory
     return _DIRECTORY
 
 
-def team_logo_url(team_name: str) -> str:
+def _scoreboard_directory(game_date: str) -> dict[str, str]:
+    date_key = re.sub(r"[^0-9]", "", str(game_date or ""))[:8]
+    if len(date_key) != 8:
+        return {}
+    if _SCOREBOARD_DIRECTORIES.get(date_key):
+        return _SCOREBOARD_DIRECTORIES[date_key]
+    now = time.time()
+    attempted = _SCOREBOARD_ATTEMPTED_AT.get(date_key, 0.0)
+    if attempted and now - attempted < _RETRY_SECONDS:
+        return {}
+    _SCOREBOARD_ATTEMPTED_AT[date_key] = now
+    payload = _fetch_json(_ESPN_SCOREBOARD.format(date=date_key))
+    directory: dict[str, str] = {}
+    for event in payload.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        for competition in event.get("competitions") or []:
+            if not isinstance(competition, dict):
+                continue
+            for competitor in competition.get("competitors") or []:
+                if not isinstance(competitor, dict):
+                    continue
+                _add_team_to_directory(directory, competitor.get("team"))
+    if directory:
+        _SCOREBOARD_DIRECTORIES[date_key] = directory
+    return directory
+
+
+def _row_game_date(row: pd.Series) -> str:
+    for field in ("Target Date", "V1.1.3 Target Date", "Start Time UTC", "_start_dt"):
+        value = row.get(field)
+        if value is None or str(value).strip() in {"", "NaT", "nan", "None"}:
+            continue
+        parsed = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.notna(parsed):
+            return parsed.strftime("%Y%m%d")
+        compact = re.sub(r"[^0-9]", "", str(value))[:8]
+        if len(compact) == 8:
+            return compact
+    return ""
+
+
+def team_logo_url(team_name: str, game_date: str = "") -> str:
     key = _norm(team_name)
     if not key:
         return ""
@@ -92,10 +146,19 @@ def team_logo_url(team_name: str) -> str:
         "nc state": "nc state wolfpack",
         "usc": "usc trojans",
         "ole miss": "ole miss rebels",
+        "st john s": "st johns red storm",
+        "saint mary s": "saint marys gaels",
     }
+    candidates = tuple(x for x in (key, aliases.get(key, "")) if x)
+    if game_date:
+        scoreboard = _scoreboard_directory(game_date)
+        for candidate in candidates:
+            if scoreboard.get(candidate):
+                _LOGO_CACHE[key] = scoreboard[candidate]
+                return _LOGO_CACHE[key]
     directory = _team_directory()
-    for candidate in (key, aliases.get(key, "")):
-        if candidate and directory.get(candidate):
+    for candidate in candidates:
+        if directory.get(candidate):
             _LOGO_CACHE[key] = directory[candidate]
             return _LOGO_CACHE[key]
     slug = quote(re.sub(r"\s+", "-", aliases.get(key, key)))
@@ -109,8 +172,8 @@ def team_logo_url(team_name: str) -> str:
     return ""
 
 
-def _logo_html(team: str) -> str:
-    url = team_logo_url(team)
+def _logo_html(team: str, game_date: str = "") -> str:
+    url = team_logo_url(team, game_date)
     if url:
         return f'<img src="{escape(url, quote=True)}" alt="{escape(team)} logo" loading="lazy">'
     letters = "".join(part[:1] for part in str(team).split()[:2]).upper() or "SF"
@@ -125,7 +188,8 @@ def _finite(value: object) -> float | None:
 def _matchup_banner(row: pd.Series) -> str:
     away = str(row.get("Away Team") or "Away")
     home = str(row.get("Home Team") or "Home")
-    return '<div class="cbb-logo-matchup">' + f'<div class="cbb-logo-team away">{_logo_html(away)}<div><strong>{escape(away)}</strong><small>AWAY</small></div></div>' + '<div class="cbb-logo-vs">VS</div>' + f'<div class="cbb-logo-team home"><div><strong>{escape(home)}</strong><small>HOME</small></div>{_logo_html(home)}</div>' + '</div>'
+    game_date = _row_game_date(row)
+    return '<div class="cbb-logo-matchup">' + f'<div class="cbb-logo-team away">{_logo_html(away, game_date)}<div><strong>{escape(away)}</strong><small>AWAY</small></div></div>' + '<div class="cbb-logo-vs">VS</div>' + f'<div class="cbb-logo-team home"><div><strong>{escape(home)}</strong><small>HOME</small></div>{_logo_html(home, game_date)}</div>' + '</div>'
 
 
 def _line_team(team: str, line: object) -> str:
@@ -138,13 +202,15 @@ def _money_card(title: str, left_label: str, lm: object, lt: object, right_label
     if left is None or right is None or abs(left + right - 100.0) > 3.0:
         return ""
     total = left + right
-    left_width = 50.0 if total <= 0 else max(0.0, min(100.0, 100.0 * left / total))
+    if total <= 0:
+        return ""
+    left_width = max(0.0, min(100.0, 100.0 * left / total))
     right_width = 100.0 - left_width
     leader, leader_pct = (left_label, left) if left >= right else (right_label, right)
     lead = f"Money heavily favors {leader}" if leader_pct >= 75 else (f"Money favors {leader}" if leader_pct >= 60 else f"Money leans {leader}")
     left_t, right_t = _finite(lt), _finite(rt)
     ticket = "Ticket split unavailable"
-    if left_t is not None and right_t is not None and abs(left_t + right_t - 100.0) <= 3.0:
+    if left_t is not None and right_t is not None and left_t + right_t > 0 and abs(left_t + right_t - 100.0) <= 3.0:
         ticket = f"Tickets: {left_label} {left_t:.0f}% · {right_label} {right_t:.0f}%"
     meter = (
         f'<div class="cbb-money-meter" aria-label="{escape(title)} handle share: {left:.0f}% versus {right:.0f}%">'
