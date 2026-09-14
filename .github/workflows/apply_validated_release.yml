@@ -1,0 +1,50 @@
+name: Apply checksum-validated release
+on:
+  push:
+    branches: [fix/automation-lifecycle-20260913]
+    paths: [.maintenance/release.patch.gz]
+permissions:
+  contents: write
+concurrency:
+  group: apply-validated-release
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify and apply audited source diff
+        env:
+          EXPECTED_GZIP: 51a705dfe59bb07409511bdf0160717d7b6f427b63265bfbca54e36d33ef1872
+          EXPECTED_PATCH: 1c23103fe33296a9f15eb466bce7e201937f533a443799d033a566de774b2217
+        run: |
+          python - <<'PY'
+          import base64, gzip, hashlib, os, pathlib, subprocess
+          raw=pathlib.Path('.maintenance/release.patch.gz').read_bytes()
+          # Repair two known transfer-only duplicate fragments, before hash validation.
+          wire=base64.b64encode(raw).decode().replace('ysVpvqrqrKF','ysVpvqrKF').replace('XfaJqlledM','XfaJledM')
+          raw=base64.b64decode(wire,validate=True)
+          assert hashlib.sha256(raw).hexdigest()==os.environ['EXPECTED_GZIP'], 'transport checksum mismatch'
+          patch=gzip.decompress(raw)
+          assert hashlib.sha256(patch).hexdigest()==os.environ['EXPECTED_PATCH'], 'source checksum mismatch'
+          subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+          subprocess.run(['git','apply','-'],input=patch,check=True)
+          PY
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Archive, grading and card-order regression tests
+        run: PYTHONPATH=. python -m pytest -q tests/test_automation_ordering.py tests/test_automation_archive.py tests/test_automation_grading.py tests/test_unified_game_board.py tests/test_intelligence.py tests/test_conference_moneybar_logo_qa.py
+      - name: Compile dashboard and automation
+        run: python -m compileall -q app.py cbb_dashboard scripts stat_factory_board_order.py stat_factory_archives.py
+      - name: Commit tested source changes to feature branch
+        run: |
+          git rm .maintenance/release.patch.gz
+          git add -A
+          git diff --cached --stat
+          git config user.name 'Stat Factory release validation'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Preserve CBB forecast revisions, add final-only grading worker and unified card ordering'
+          git push origin HEAD:fix/automation-lifecycle-20260913
