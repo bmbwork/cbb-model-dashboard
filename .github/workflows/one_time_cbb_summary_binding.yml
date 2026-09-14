@@ -1,4 +1,5 @@
 name: One-time CBB live summary binding
+# Second push triggers this workflow now that it is registered on main.
 on:
   push:
     branches: [main]
