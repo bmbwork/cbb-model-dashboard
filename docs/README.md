@@ -16,5 +16,6 @@ These are retained for traceability but should not be used as current operating 
 
 - `archive/2026-09/AUTOMATION_AUDIT_2026_09_13.md`
 - `archive/2026-09/PRESEASON_READINESS_2026_09_13.md`
+- `archive/legacy/PROJECT_MANIFEST_V1_6_0.txt` — historical v1.6 file inventory; not an authoritative inventory of current main.
 
 The private V1.1.3B champion and its credentials remain outside this public dashboard repository.
