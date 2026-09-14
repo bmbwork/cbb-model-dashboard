@@ -11,6 +11,7 @@ CONFIG_PATH="$CONFIG_DIR/cbb_automation.json"
 ENV_PATH="$CONFIG_DIR/cbb_automation.env"
 LOG_DIR="$HOME/Library/Logs/StatFactory/CBB"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+SAFE_VENV="$HOME/Library/Application Support/StatFactory/CBB/venv/bin/python"
 
 say() { printf '\n[CBB automation] %s\n' "$*"; }
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -24,6 +25,19 @@ fi
 
 [ -d "$WEB_ROOT/.git" ] || fail "CBB website repository not found: $WEB_ROOT"
 [ -f "$WEB_ROOT/scripts/run_cbb_model_refresh.py" ] || fail "Scheduled refresh runner is missing from the website repository."
+[ -f "$WEB_ROOT/scripts/dispatch_cbb_model_refresh.py" ] || fail "Forecast dispatcher is missing from the website repository."
+
+if [ -z "$MODEL_ROOT" ] && [ -f "$CONFIG_PATH" ]; then
+  MODEL_ROOT="$(python3 - "$CONFIG_PATH" <<'PY' 2>/dev/null || true
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+try:
+    print(str(json.loads(p.read_text(encoding="utf-8")).get("model_root") or ""))
+except Exception:
+    pass
+PY
+)"
+fi
 
 if [ -z "$MODEL_ROOT" ]; then
   matches="$(find "$HOME/Desktop" -maxdepth 4 -type f -name 'run_cbb_champion.sh' -print 2>/dev/null || true)"
@@ -48,7 +62,7 @@ if [ ! -f "$MODEL_ROOT/.env" ] || ! grep -Eq '^[[:space:]]*(CBBD_API_KEY|BEARER_
 fi
 
 PY=""
-for candidate in "$WEB_ROOT/.venv/bin/python" "$(command -v python3.12 2>/dev/null || true)"; do
+for candidate in "$SAFE_VENV" "$WEB_ROOT/.venv/bin/python" "$(command -v python3.12 2>/dev/null || true)"; do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3,12) else 1)' >/dev/null 2>&1; then
       PY="$candidate"
@@ -61,7 +75,6 @@ done
 mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents"
 chmod 700 "$CONFIG_DIR"
 
-# Save only paths in JSON. Secrets stay in a separate chmod-600 env file.
 "$PY" - "$CONFIG_PATH" "$MODEL_ROOT" "$WEB_ROOT" <<'PY'
 import json
 import pathlib
@@ -70,7 +83,7 @@ path = pathlib.Path(sys.argv[1])
 payload = {
     "model_root": sys.argv[2],
     "web_root": sys.argv[3],
-    "schedule": "Mon/Wed/Sat 05:15 local",
+    "schedule": "30-minute dispatcher: next-day early 18:15 CT; game-day mid; late first-tip minus 3h",
     "model_version": "1.1.3B",
 }
 path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -127,10 +140,12 @@ EOF
   chmod 600 "$ENV_PATH"
 fi
 
+TODAY_CT="$(TZ=America/Chicago date +%F)"
 say "Validating scheduler configuration without running the model"
-"$PY" "$WEB_ROOT/scripts/run_cbb_model_refresh.py" --dry-run
+"$PY" "$WEB_ROOT/scripts/run_cbb_model_refresh.py" --date "$TODAY_CT" --dry-run
+"$PY" "$WEB_ROOT/scripts/dispatch_cbb_model_refresh.py" --dry-run
 
-say "Installing launchd schedule"
+say "Installing 30-minute game-relative forecast dispatcher"
 "$PY" - "$PLIST" "$PY" "$WEB_ROOT" "$LOG_DIR" "$LABEL" <<'PY'
 import pathlib
 import plistlib
@@ -142,17 +157,14 @@ log_dir = pathlib.Path(sys.argv[4])
 label = sys.argv[5]
 payload = {
     "Label": label,
-    "ProgramArguments": [python, str(pathlib.Path(web_root) / "scripts" / "run_cbb_model_refresh.py")],
+    "ProgramArguments": [python, str(pathlib.Path(web_root) / "scripts" / "dispatch_cbb_model_refresh.py")],
     "WorkingDirectory": web_root,
-    "StartCalendarInterval": [
-        {"Weekday": 2, "Hour": 5, "Minute": 15},
-        {"Weekday": 4, "Hour": 5, "Minute": 15},
-        {"Weekday": 7, "Hour": 5, "Minute": 15},
-    ],
+    "StartInterval": 1800,
     "ProcessType": "Background",
-    "RunAtLoad": False,
-    "StandardOutPath": str(log_dir / "scheduled_refresh.log"),
-    "StandardErrorPath": str(log_dir / "scheduled_refresh_error.log"),
+    "RunAtLoad": True,
+    "ThrottleInterval": 60,
+    "StandardOutPath": str(log_dir / "forecast_dispatch.log"),
+    "StandardErrorPath": str(log_dir / "forecast_dispatch_error.log"),
     "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
 }
 with plist_path.open("wb") as handle:
@@ -166,12 +178,14 @@ launchctl enable "gui/$UID/$LABEL" >/dev/null 2>&1 || true
 
 say "Installed successfully"
 printf '%s\n' \
-  "Schedule: Monday 05:15 local -> Monday/Tuesday/Wednesday slates" \
-  "          Wednesday 05:15 local -> Wednesday/Thursday/Friday slates" \
-  "          Saturday 05:15 local -> Saturday/Sunday slates" \
-  "Every target is run with --refresh-data and published to Supabase." \
-  "Logs: $LOG_DIR/scheduled_refresh.log" \
-  "State: $LOG_DIR/last_refresh.json" \
-  "Manual dry run: $PY $WEB_ROOT/scripts/run_cbb_model_refresh.py --dry-run" \
-  "Manual live run: $PY $WEB_ROOT/scripts/run_cbb_model_refresh.py" \
-  "Uninstall: bash $WEB_ROOT/scripts/install_cbb_model_refresh_launchd.sh --uninstall"
+  "Dispatcher: every 30 minutes and once at login." \
+  "EARLY:      18:15 CT -> tomorrow's slate." \
+  "MID:        first tip minus 10h, no earlier than 06:15 CT; 08:15 fallback only before 10:00 CT if no board exists." \
+  "LATE:       first tip minus 3h, never after the first tip." \
+  "Retries:    failed stages back off automatically; completed stages do not duplicate." \
+  "Each due revision runs frozen V1.1.3B with refreshed basketball data and publishes immutably downstream." \
+  "Logs:       $LOG_DIR/forecast_dispatch.log" \
+  "Errors:     $LOG_DIR/forecast_dispatch_error.log" \
+  "State:      $CONFIG_DIR/cbb_dispatch_state.json" \
+  "Dry run:    $PY $WEB_ROOT/scripts/dispatch_cbb_model_refresh.py --dry-run" \
+  "Uninstall:  bash $WEB_ROOT/scripts/install_cbb_model_refresh_launchd.sh --uninstall"
