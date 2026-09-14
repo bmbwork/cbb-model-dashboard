@@ -76,16 +76,8 @@ def resolve_publish_credentials(web_root: Path) -> tuple[str, str]:
 
 
 def scheduled_target_dates(anchor: date) -> list[date]:
-    """Return the forecast window for a scheduled Monday/Wednesday/Saturday run."""
-    if anchor.weekday() == 0:  # Monday -> Mon, Tue, Wed
-        offsets = (0, 1, 2)
-    elif anchor.weekday() == 2:  # Wednesday -> Wed, Thu, Fri
-        offsets = (0, 1, 2)
-    elif anchor.weekday() == 5:  # Saturday -> Sat, Sun
-        offsets = (0, 1)
-    else:
-        offsets = (0,)
-    return [anchor + timedelta(days=offset) for offset in offsets]
+    """Default manual target is the anchor date; the dispatcher supplies explicit dates."""
+    return [anchor]
 
 
 def parse_dates(values: Iterable[str]) -> list[date]:
@@ -214,10 +206,6 @@ def main() -> int:
 
     anchor = date.fromisoformat(args.anchor_date) if args.anchor_date else datetime.now().astimezone().date()
     targets = parse_dates(args.date) if args.date else scheduled_target_dates(anchor)
-    if not args.date and len(targets) > 1:
-        # Publish future slates first and the anchor/current slate last so the
-        # v1.6.0 publication-recency default still resolves to the current day.
-        targets = targets[1:] + targets[:1]
     if not targets:
         raise RuntimeError("No target dates were selected.")
 
