@@ -5,6 +5,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from stat_factory_board_order import SORT_TIME, SORT_TOSSUPS, SORT_FAVORITES, sort_cards
+
 RANK_FILTER_ALL = "All games"
 RANK_FILTER_ANY_TOP25 = "Any AP Top 25"
 RANK_FILTER_ANY_TOP10 = "Any AP Top 10"
@@ -23,12 +25,11 @@ MOVE_AWAY = "Away from model pick"
 MOVE_1_PLUS = "Moved 1+ point"
 MOVE_FILTERS = [MOVE_ANY, MOVE_TOWARD, MOVE_AWAY, MOVE_1_PLUS]
 
-SORT_MODEL = "Model win chance"
-SORT_TIME = "Tip time"
+SORT_MODEL = SORT_FAVORITES
 SORT_AP = "AP ranking"
 SORT_ML = "Best ML price"
 SORT_GAP = "Spread disagreement"
-SORT_OPTIONS = [SORT_MODEL, SORT_TIME, SORT_AP, SORT_ML, SORT_GAP]
+SORT_OPTIONS = [SORT_TIME, SORT_TOSSUPS, SORT_MODEL, SORT_AP, SORT_ML, SORT_GAP]
 
 
 def _num(value: object) -> float:
@@ -214,10 +215,8 @@ def filter_board(
     elif venue_mode != "All venues":
         raise ValueError(f"Unsupported venue filter: {venue_mode}")
 
-    if sort_by == SORT_MODEL:
-        out = out.assign(_sort=pd.to_numeric(out.get("_win_prob", out.get("Win Probability")), errors="coerce")).sort_values("_sort", ascending=False, na_position="last")
-    elif sort_by == SORT_TIME:
-        out = out.assign(_sort=pd.to_datetime(out.get("_start_dt", out.get("Start Time UTC")), utc=True, errors="coerce")).sort_values("_sort", ascending=True, na_position="last")
+    if sort_by in {SORT_MODEL, SORT_TOSSUPS, SORT_TIME}:
+        out = sort_cards(out, sort_by, time_column=("Start Time UTC" if "Start Time UTC" in out else "_start_dt"), probability_column=("_win_prob" if "_win_prob" in out else "Win Probability"))
     elif sort_by == SORT_AP:
         out = out.sort_values(["_filter_ap_rank", "_filter_best_ml"], ascending=[True, False], na_position="last")
     elif sort_by == SORT_ML:

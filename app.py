@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from stat_factory_board_order import next_slate_date
+from zoneinfo import ZoneInfo
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -270,7 +273,7 @@ def render_home(records: list[dict[str, Any]], store_error: str | None = None) -
         st.info("Publishing storage is not available in this deployment. The methodology guide remains available below.")
     st.markdown('<div class="section-title">How to use the product</div>', unsafe_allow_html=True)
     st.markdown(
-        "**Game Board** is the main betting workbench: it opens on the latest published slate, lets you choose any saved date, and combines AP ranking, model confidence, sportsbook price, market availability, movement and data-quality filters with the same premium game cards. **Performance Lab** is for historical model evaluation."
+        "**Game Board** is the main betting workbench: it opens on the next published game day, lets you choose any saved date, and combines AP ranking, model confidence, sportsbook price, market availability, movement and data-quality filters with the same premium game cards. **Performance Lab** is for historical model evaluation."
     )
     with st.expander("Model and market guide"):
         render_model_guide(compact=True)
@@ -1153,6 +1156,19 @@ def render_admin_studio(store: SupabaseSlateStore | None, access, records: list[
             st.warning("Automated best-odds archive is not ready. Run supabase/market_archive_v1_5.sql, then configure the GitHub Actions secrets described in ARCHIVE_SETUP_V1_5_0.md.")
         st.caption(f"Published records visible to the app: {len(records)}. Secret values are never rendered here.")
 
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_archive_catalog(_store):
+    return _store.list_catalog() if _store else []
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_archive_revisions(_store, day):
+    return _store.list_revisions(day) if _store else []
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_archive_record(_store, day, revision):
+    return _store.get_revision(day, revision) if _store else None
+
 @st.cache_data(ttl=30, show_spinner=False)
 def cached_record_list(_store: SupabaseSlateStore | None) -> list[dict[str, Any]]:
     if _store is None:
@@ -1304,18 +1320,27 @@ elif page == "Performance Lab":
 elif page == "Admin Studio":
     render_admin_studio(store, access, records)
 else:
-    dates = [str(r.get("slate_date")) for r in records if r.get("slate_date")]
-    # Preserve storage order: records are returned newest-first by the slate store.
+    archive_catalog = cached_archive_catalog(store) if store else records
+    dates = [str(r.get("slate_date")) for r in archive_catalog if r.get("slate_date")]
+    # Dates are independent of upload time and every published day remains selectable.
     dates = list(dict.fromkeys(dates))
-    selected_date: str | None = dates[0] if dates else None
+    selected_date: str | None = next_slate_date(dates)
     if page == "Game Board":
         st.markdown('<div class="cbb-kicker">GAME BOARD</div>', unsafe_allow_html=True)
         st.markdown('<div class="cbb-title">CBB <span style="color:#f97316">GAME BOARD</span></div>', unsafe_allow_html=True)
         st.markdown('<div class="cbb-subtitle">Choose the latest or any published slate, then narrow the board by team, AP ranking, model confidence, sportsbook price and market behavior.</div>', unsafe_allow_html=True)
         if dates:
-            selected_date = st.selectbox("Slate date", dates, index=0, help="Published decision boards, newest first.")
+            selected_date = st.selectbox("Slate date", dates, index=dates.index(selected_date), help="Defaults to the next published game day; past slates remain available.")
 
-    record = next((r for r in records if selected_date and str(r.get("slate_date")) == selected_date), None)
+    record = store.get(selected_date) if store and selected_date else None
+    if store and selected_date:
+        choices = cached_archive_revisions(store, selected_date)
+        numbers = [int(r["revision"]) for r in choices]
+        if numbers:
+            revision = st.selectbox("Forecast revision", numbers, format_func=lambda n: f"Revision {n}" + (" (latest)" if n == numbers[0] else ""))
+            record = cached_archive_record(store, selected_date, revision)
+        if selected_date < datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d"):
+            st.caption("Historical published board. No upcoming published slate is implied by this selection.")
     board, report, market_snapshots, market_context, market_error = load_public_board(record, store)
     if board.empty or report is None:
         render_empty_state(store_error)
