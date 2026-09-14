@@ -2,9 +2,9 @@ name: Public Display Regression
 on:
   pull_request:
   push:
-    branches: [main, fix/live-summary-runtime-binding-20260914]
+    branches: [main]
 permissions:
-  contents: write
+  contents: read
 jobs:
   display:
     runs-on: ubuntu-latest
@@ -14,42 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/live-summary-runtime-binding-20260914
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-      - name: Rebind the already-imported CBB grid to the summary runtime
-        shell: python
-        run: |
-          from pathlib import Path
-          p=Path('app.py');s=p.read_text()
-          old='''from cbb_dashboard.spread_display import install_spread_display
-install_spread_display()
-st.markdown(GLOBAL_CSS, unsafe_allow_html=True)'''
-          new='''from cbb_dashboard.spread_display import install_spread_display
-from cbb_dashboard.board_summary_runtime import install_board_summary_runtime
-from cbb_dashboard import intelligence as _cbb_intelligence
-install_spread_display()
-install_board_summary_runtime()
-# app.py imported game_card_grid_html before runtime installation. Rebind the local
-# symbol on every rerun so persistent Streamlit workers use the current wrapper.
-game_card_grid_html = _cbb_intelligence.game_card_grid_html
-st.markdown(GLOBAL_CSS, unsafe_allow_html=True)'''
-          if old in s:
-              assert s.count(old)==1
-              p.write_text(s.replace(old,new,1))
-          else:
-              assert 'game_card_grid_html = _cbb_intelligence.game_card_grid_html' in s
       - run: python -m pip install -r requirements.txt pytest
-      - run: python -m compileall -q app.py cbb_dashboard
       - run: python -m pytest -q tests/test_board_record_summary.py tests/test_board_summary_runtime.py tests/test_spread_display.py tests/test_bundled_logos.py tests/test_logo_scoreboard_and_splits.py tests/test_conference_moneybar_logo_qa.py
-      - name: Commit tested app binding if needed
-        run: |
-          git config user.name 'Stat Factory maintenance'
-          git config user.email 'noreply@users.noreply.github.com'
-          git add app.py
-          if ! git diff --cached --quiet; then
-            git commit -m 'Bind CBB Game Board to summary runtime on every Streamlit rerun'
-            git push origin HEAD:fix/live-summary-runtime-binding-20260914
-          fi
