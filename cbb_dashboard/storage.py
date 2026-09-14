@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import stat_factory_archives as publication_archive
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -50,6 +52,15 @@ class SupabaseSlateStore:
         self._create_client = create_client
         self._public = create_client(config.url, config.publishable_key)
         self._admin = None
+
+    def list_catalog(self):
+        return publication_archive.catalog(self._public, "cbb_slates")
+
+    def list_revisions(self, slate_date: str):
+        return publication_archive.revisions(self._public, "cbb_slate_revisions", slate_date)
+
+    def get_revision(self, slate_date: str, revision: int):
+        return publication_archive.revision(self._public, "cbb_slate_revisions", slate_date, revision)
 
     def _admin_client(self):
         if not self.config.secret_key:
@@ -421,8 +432,10 @@ class SupabaseSlateStore:
             "updated_at": now,
         }
         try:
-            resp = client.table(self.TABLE).update(payload).eq("slate_date", report.slate_date).execute()
+            resp = client.table(self.TABLE).update(payload).eq("slate_date", report.slate_date).eq("board_sha256", existing["board_sha256"]).execute()
             data = self._data(resp)
-            return dict(data[0]) if data else {**existing, **payload}
+            if not data:
+                raise StorageOperationError("Board changed during grading; retry against the current revision")
+            return dict(data[0])
         except Exception as exc:
             raise StorageOperationError(f"Grading publish failed: {type(exc).__name__}") from exc
