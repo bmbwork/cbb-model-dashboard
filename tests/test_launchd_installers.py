@@ -53,6 +53,18 @@ def test_both_cbb_launchd_installers_force_headless_managed_runtime():
         assert '"WorkingDirectory"' in text
 
 
+def test_cbb_installers_never_execute_work_on_bootstrap():
+    forecast = read_script("install_cbb_model_refresh_launchd.sh")
+    grader = read_script("install_cbb_auto_grade_launchd.sh")
+
+    assert '"StartInterval": 1800' in forecast
+    assert '"StartInterval": 1800' in grader
+    assert '"RunAtLoad"' not in forecast
+    assert '"RunAtLoad"' not in grader
+    assert "installation/reload does not execute a forecast" in forecast
+    assert "installation/reload does not grade or write results" in grader
+
+
 def test_forecast_installer_handles_missing_cached_credentials_without_set_e_abort():
     text = read_script("install_cbb_model_refresh_launchd.sh")
 
