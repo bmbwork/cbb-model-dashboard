@@ -94,7 +94,6 @@ payload = {
     "ProgramArguments": [python, str(web_root / "scripts" / "run_cbb_auto_grade.py")],
     "WorkingDirectory": str(web_root),
     "StartInterval": 1800,
-    "RunAtLoad": True,
     "ProcessType": "Background",
     "ThrottleInterval": 60,
     "StandardOutPath": str(log_dir / "auto_grader.log"),
@@ -118,7 +117,7 @@ printf '%s\n' \
   "Automation Python: $PY" \
   "Dashboard runtime: $WEB_ROOT" \
   "Champion runtime:  $MODEL_ROOT" \
-  "Poll cadence: every 30 minutes" \
+  "Poll cadence: every 30 minutes; installation/reload does not grade or write results." \
   "Starts checking a slate 90 minutes after its earliest scheduled tip" \
   "Publishes only when finals/cancellations/final-score corrections change grading state" \
   "Logs: $LOG_DIR/auto_grader.log" \

@@ -213,7 +213,6 @@ payload = {
     "WorkingDirectory": web_root,
     "StartInterval": 1800,
     "ProcessType": "Background",
-    "RunAtLoad": True,
     "ThrottleInterval": 60,
     "StandardOutPath": str(log_dir / "forecast_dispatch.log"),
     "StandardErrorPath": str(log_dir / "forecast_dispatch_error.log"),
@@ -237,7 +236,7 @@ printf '%s\n' \
   "Automation Python: $PY" \
   "Dashboard runtime: $WEB_ROOT" \
   "Champion runtime:  $MODEL_ROOT" \
-  "Dispatcher: every 30 minutes and once at login." \
+  "Dispatcher: every 30 minutes; installation/reload does not execute a forecast." \
   "EARLY:      18:15 CT -> tomorrow's slate, with pre-MID sleep/restart catch-up." \
   "MID:        first tip minus 10h, no earlier than 06:15 CT; 08:15 fallback only before 10:00 CT if no board exists." \
   "LATE:       first tip minus 3h, never after the first tip." \
