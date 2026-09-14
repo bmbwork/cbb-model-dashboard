@@ -25,6 +25,8 @@ def _is_headless_automation() -> bool:
 if not _is_headless_automation():
     from .conference_filter_runtime import install_conference_filter_runtime as _install_conference_filter_runtime
     from .premium_ui_patch import apply_premium_ui_patch as _apply_premium_ui_patch
+    from .board_summary_runtime import install_board_summary_runtime as _install_board_summary_runtime
 
     _apply_premium_ui_patch()
+    _install_board_summary_runtime()
     _install_conference_filter_runtime()
