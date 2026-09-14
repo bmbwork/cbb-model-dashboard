@@ -4,34 +4,59 @@ on:
     branches: [fix/visible-dashboard-corrections-20260914]
     paths: [.github/workflows/visible_repair_workbench.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  assets:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          persist-credentials: false
-      - name: Archive tracked dashboard source only
+          python-version: '3.12'
+      - run: python -m pip install Pillow requests
+      - name: Retrieve official display identities and verify bundled image bytes
         shell: python
         run: |
-          import pathlib, subprocess, tarfile
-          names = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          with tarfile.open('dashboard-source.tar.gz','w:gz') as archive:
-              for name in names:
-                  if not name or name.startswith('production_model/'):
-                      continue
-                  path = pathlib.Path(name)
-                  if path.name in {'.env','secrets.toml'} or path.is_symlink() or not path.is_file():
-                      continue
-                  if path.stat().st_size <= 5000000 and path.suffix.lower() in {'.py','.json','.md','.txt','.toml','.yml','.yaml','.csv','.sh','.command','.sql','.html','.png','.svg'}:
-                      archive.add(path,arcname=name)
-          pathlib.Path('revision.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD']).decode())
+          import concurrent.futures, datetime, hashlib, io, json, pathlib, re, unicodedata
+          from urllib.parse import urlparse
+          import requests
+          from PIL import Image
+          source = 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000'
+          response = requests.get(source, timeout=45); response.raise_for_status()
+          teams = response.json()['sports'][0]['leagues'][0]['teams']
+          assert len(teams) >= 300, 'Incomplete ESPN team directory'
+          root = pathlib.Path('assets/cbb_teams'); root.mkdir(parents=True, exist_ok=True)
+          def collect(wrapper):
+              team = wrapper['team']; ident = str(team['id'])
+              if not ident.isdigit(): raise ValueError('Invalid team id')
+              urls = [x['href'] for x in team.get('logos',[]) if isinstance(x,dict) and x.get('href')]
+              url = next((u for u in urls if urlparse(u).hostname == 'a.espncdn.com'), None)
+              if not url: return None
+              try:
+                  result = requests.get(url, timeout=20); result.raise_for_status()
+                  image = Image.open(io.BytesIO(result.content)); image.load()
+                  image = image.convert('RGBA'); image.thumbnail((128,128))
+                  path = root / (ident + '.png'); image.save(path, format='PNG', optimize=True)
+                  return {'id': ident, 'display_name': team.get('displayName'), 'aliases': [team.get(k) for k in ('location','displayName','shortDisplayName','abbreviation','slug') if team.get(k)], 'source_url': url, 'asset': ident + '.png', 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+              except Exception as exc:
+                  print('Unavailable logo',ident,type(exc).__name__); return None
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+              records = [r for r in pool.map(collect, teams) if r]
+          assert len(records) >= 300, 'Too few verified logos; refusing partial bundle'
+          (root/'directory.json').write_text(json.dumps({'source_url':source,'retrieved_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'teams':records}, indent=2, sort_keys=True)+'\n')
+          print('Verified bundled team logos:',len(records))
+      - name: Commit only logo assets to the repair branch
+        run: |
+          git config user.name 'Stat Factory maintenance'
+          git config user.email 'noreply@users.noreply.github.com'
+          git add assets/cbb_teams
+          git diff --cached --quiet || git commit -m 'Bundle verified CBB team identities and logos for offline rendering'
+          git push origin HEAD:fix/visible-dashboard-corrections-20260914
+      - name: Export reviewed display asset bundle
+        run: tar -czf cbb-logo-assets.tar.gz assets/cbb_teams
       - uses: actions/upload-artifact@v4
         with:
-          name: visible-dashboard-source
-          path: |
-            dashboard-source.tar.gz
-            revision.txt
+          name: cbb-logo-assets
+          path: cbb-logo-assets.tar.gz
           retention-days: 2
