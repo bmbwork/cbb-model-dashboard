@@ -90,7 +90,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.6.3"
+APP_VERSION = "1.6.4"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -99,7 +99,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 from cbb_dashboard.spread_display import install_spread_display
+from cbb_dashboard.board_summary_runtime import install_board_summary_runtime
+from cbb_dashboard import intelligence as _cbb_intelligence
 install_spread_display()
+install_board_summary_runtime()
+# app.py imports the grid before runtime installation; rebind the local symbol on
+# every Streamlit rerun so source-sync workers cannot retain the old renderer.
+game_card_grid_html = _cbb_intelligence.game_card_grid_html
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown(r"""
 <style>
