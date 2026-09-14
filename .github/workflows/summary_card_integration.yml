@@ -1,4 +1,5 @@
 name: Summary card integration
+# Branch-only one-time integration runner; removed before merge.
 on:
   push:
     branches: [feat/cfb-style-summary-record-cards-20260914]
