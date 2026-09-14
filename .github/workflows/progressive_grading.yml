@@ -1,7 +1,7 @@
 name: CBB Progressive Final Grading
 on:
   push:
-    branches: [main, fix/automation-runtime-resume-20260913]
+    branches: [main]
     paths: [.github/workflows/progressive_grading.yml, scripts/grade_published.py, cbb_dashboard/final_results.py]
   workflow_dispatch:
     inputs:
