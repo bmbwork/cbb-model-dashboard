@@ -11,7 +11,9 @@ CONFIG_PATH="$CONFIG_DIR/cbb_automation.json"
 ENV_PATH="$CONFIG_DIR/cbb_automation.env"
 LOG_DIR="$HOME/Library/Logs/StatFactory/CBB"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-SAFE_VENV="$HOME/Library/Application Support/StatFactory/CBB/venv/bin/python"
+RUNTIME_DIR="$HOME/Library/Application Support/StatFactory/CBB/venv"
+RUNTIME_PY="$RUNTIME_DIR/bin/python"
+RUNTIME_LOCK="$WEB_ROOT/requirements-automation.lock"
 
 say() { printf '\n[CBB automation] %s\n' "$*"; }
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -26,6 +28,7 @@ fi
 [ -d "$WEB_ROOT/.git" ] || fail "CBB website repository not found: $WEB_ROOT"
 [ -f "$WEB_ROOT/scripts/run_cbb_model_refresh.py" ] || fail "Scheduled refresh runner is missing from the website repository."
 [ -f "$WEB_ROOT/scripts/dispatch_cbb_model_refresh.py" ] || fail "Forecast dispatcher is missing from the website repository."
+[ -f "$RUNTIME_LOCK" ] || fail "Pinned automation requirements are missing: $RUNTIME_LOCK"
 
 if [ -z "$MODEL_ROOT" ] && [ -f "$CONFIG_PATH" ]; then
   MODEL_ROOT="$(python3 - "$CONFIG_PATH" <<'PY' 2>/dev/null || true
@@ -61,19 +64,31 @@ if [ ! -f "$MODEL_ROOT/.env" ] || ! grep -Eq '^[[:space:]]*(CBBD_API_KEY|BEARER_
   fail "The frozen model .env does not contain CBBD_API_KEY or BEARER_TOKEN. The scheduled runner would not be able to refresh basketball data."
 fi
 
-PY=""
-for candidate in "$SAFE_VENV" "$WEB_ROOT/.venv/bin/python" "$(command -v python3.12 2>/dev/null || true)"; do
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3,12) else 1)' >/dev/null 2>&1; then
-      PY="$candidate"
-      break
-    fi
-  fi
-done
-[ -n "$PY" ] || fail "Python 3.12 was not found for the website automation runtime."
+BASE_PY="$(command -v python3.12 2>/dev/null || true)"
+if [ -z "$BASE_PY" ] && [ -x "$RUNTIME_PY" ]; then
+  BASE_PY="$RUNTIME_PY"
+fi
+[ -n "$BASE_PY" ] || fail "Python 3.12 was not found for the website automation runtime."
 
-mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents"
+mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents" "$(dirname "$RUNTIME_DIR")"
 chmod 700 "$CONFIG_DIR"
+
+if [ ! -x "$RUNTIME_PY" ]; then
+  say "Creating isolated CBB automation runtime"
+  "$BASE_PY" -m venv "$RUNTIME_DIR"
+fi
+say "Synchronizing pinned CBB automation dependencies"
+"$RUNTIME_PY" -m pip install --disable-pip-version-check -q -r "$RUNTIME_LOCK"
+"$RUNTIME_PY" - <<'PY'
+import sys
+import numpy
+import pandas
+import supabase
+if sys.version_info[:2] != (3, 12):
+    raise SystemExit("CBB automation runtime must use Python 3.12")
+print("CBB automation runtime verified")
+PY
+PY="$RUNTIME_PY"
 
 "$PY" - "$CONFIG_PATH" "$MODEL_ROOT" "$WEB_ROOT" <<'PY'
 import json
@@ -142,8 +157,8 @@ fi
 
 TODAY_CT="$(TZ=America/Chicago date +%F)"
 say "Validating scheduler configuration without running the model"
-"$PY" "$WEB_ROOT/scripts/run_cbb_model_refresh.py" --date "$TODAY_CT" --dry-run
-"$PY" "$WEB_ROOT/scripts/dispatch_cbb_model_refresh.py" --dry-run
+STAT_FACTORY_HEADLESS_AUTOMATION=1 "$PY" "$WEB_ROOT/scripts/run_cbb_model_refresh.py" --date "$TODAY_CT" --dry-run
+STAT_FACTORY_HEADLESS_AUTOMATION=1 "$PY" "$WEB_ROOT/scripts/dispatch_cbb_model_refresh.py" --dry-run
 
 say "Installing 30-minute game-relative forecast dispatcher"
 "$PY" - "$PLIST" "$PY" "$WEB_ROOT" "$LOG_DIR" "$LABEL" <<'PY'
@@ -165,7 +180,11 @@ payload = {
     "ThrottleInterval": 60,
     "StandardOutPath": str(log_dir / "forecast_dispatch.log"),
     "StandardErrorPath": str(log_dir / "forecast_dispatch_error.log"),
-    "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
+    "EnvironmentVariables": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONNOUSERSITE": "1",
+        "STAT_FACTORY_HEADLESS_AUTOMATION": "1",
+    },
 }
 with plist_path.open("wb") as handle:
     plistlib.dump(payload, handle, sort_keys=False)
@@ -178,6 +197,7 @@ launchctl enable "gui/$UID/$LABEL" >/dev/null 2>&1 || true
 
 say "Installed successfully"
 printf '%s\n' \
+  "Runtime:    $PY" \
   "Dispatcher: every 30 minutes and once at login." \
   "EARLY:      18:15 CT -> tomorrow's slate." \
   "MID:        first tip minus 10h, no earlier than 06:15 CT; 08:15 fallback only before 10:00 CT if no board exists." \
@@ -187,5 +207,5 @@ printf '%s\n' \
   "Logs:       $LOG_DIR/forecast_dispatch.log" \
   "Errors:     $LOG_DIR/forecast_dispatch_error.log" \
   "State:      $CONFIG_DIR/cbb_dispatch_state.json" \
-  "Dry run:    $PY $WEB_ROOT/scripts/dispatch_cbb_model_refresh.py --dry-run" \
+  "Dry run:    STAT_FACTORY_HEADLESS_AUTOMATION=1 $PY $WEB_ROOT/scripts/dispatch_cbb_model_refresh.py --dry-run" \
   "Uninstall:  bash $WEB_ROOT/scripts/install_cbb_model_refresh_launchd.sh --uninstall"
