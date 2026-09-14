@@ -50,7 +50,7 @@ print("CBB automation runtime verified")
 PY
 PY="$RUNTIME_PY"
 
-MODEL_ROOT="$($PY - "$CONFIG_PATH" <<'PY'
+MODEL_ROOT="$("$PY" - "$CONFIG_PATH" <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 data = json.loads(p.read_text(encoding="utf-8"))
