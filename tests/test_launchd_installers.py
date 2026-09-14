@@ -10,7 +10,7 @@ def test_auto_grade_installer_quotes_managed_python_path_in_command_substitution
     # The managed runtime lives under ~/Library/Application Support/... .
     # If $PY is unquoted here, Bash splits the interpreter path at the space and
     # attempts to execute ~/Library/Application instead of the Python binary.
-    assert 'MODEL_ROOT="$("$PY" - "$CONFIG_PATH" <<\'PY\'' in text
+    assert """MODEL_ROOT="$("$PY" - "$CONFIG_PATH" <<'PY'""" in text
     assert 'MODEL_ROOT="$($PY - "$CONFIG_PATH"' not in text
 
 
