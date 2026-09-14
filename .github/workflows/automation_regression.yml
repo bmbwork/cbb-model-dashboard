@@ -17,5 +17,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt pytest
-      - run: python -m pytest -q tests/test_automation_ordering.py tests/test_automation_archive.py tests/test_automation_grading.py
+      - run: python -m pytest -q tests/test_automation_ordering.py tests/test_automation_archive.py tests/test_automation_grading.py tests/test_final_integrity.py
       - run: python -m compileall -q app.py cbb_dashboard scripts stat_factory_archives.py stat_factory_board_order.py

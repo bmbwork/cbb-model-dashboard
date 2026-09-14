@@ -15,15 +15,23 @@ def final_scores(payload):
         if not isinstance(item, dict):
             continue
         gid = item.get('id', item.get('game_id', item.get('gameId')))
-        if gid is None:
+        game_id = pd.to_numeric(gid, errors='coerce')
+        if isinstance(gid, bool) or pd.isna(game_id) or not np.isfinite(game_id) or game_id <= 0 or not float(game_id).is_integer():
             continue
         status = str(item.get('status', '')).strip().lower()
-        home = pd.to_numeric(item.get('homePoints', item.get('home_points')), errors='coerce')
-        away = pd.to_numeric(item.get('awayPoints', item.get('away_points')), errors='coerce')
+        raw_home = item.get('homePoints', item.get('home_points'))
+        raw_away = item.get('awayPoints', item.get('away_points'))
+        if isinstance(raw_home, bool) or isinstance(raw_away, bool):
+            continue
+        home = pd.to_numeric(raw_home, errors='coerce')
+        away = pd.to_numeric(raw_away, errors='coerce')
         if status != 'final' or pd.isna(home) or pd.isna(away) or min(home, away) < 0 or home == away:
             continue
         if float(home).is_integer() and float(away).is_integer():
-            result[str(int(gid))] = (int(home), int(away))
+            identity, score = str(int(game_id)), (int(home), int(away))
+            if identity in result and result[identity] != score:
+                raise ValueError('Conflicting final scores for game ' + identity)
+            result[identity] = score
     return result
 
 
@@ -51,7 +59,10 @@ def grade_frozen_board(board, scores, previous=None):
             if row.get('Grade Eligible') is True:
                 h, a = pd.to_numeric(row.get('Final Home Score'), errors='coerce'), pd.to_numeric(row.get('Final Away Score'), errors='coerce')
                 if pd.notna(h) and pd.notna(a):
-                    resolved.setdefault(str(int(float(row['Game ID']))), (int(h), int(a)))
+                    identity, score = str(int(float(row['Game ID']))), (int(h), int(a))
+                    if identity in resolved and resolved[identity] != score:
+                        raise ValueError('Final-score correction requires review for game ' + identity)
+                    resolved.setdefault(identity, score)
     ids = out['Game ID'].map(lambda x: str(int(float(x))))
     h = pd.Series([resolved.get(x, (np.nan, np.nan))[0] for x in ids], index=out.index, dtype=float)
     a = pd.Series([resolved.get(x, (np.nan, np.nan))[1] for x in ids], index=out.index, dtype=float)
