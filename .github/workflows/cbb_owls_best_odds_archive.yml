@@ -1,5 +1,4 @@
 name: CBB Owls Best Odds Archive
-
 on:
   workflow_dispatch:
     inputs:
@@ -8,52 +7,53 @@ on:
         required: true
         default: hourly
         type: choice
-        options:
-          - hourly
-          - close
+        options: [hourly, close]
   schedule:
-    # Full archive snapshot once per hour, deliberately off minute 0.
     - cron: '17 * * * *'
-
+  push:
+    branches: [main, fix/automation-runtime-resume-20260913]
+    paths: [.github/workflows/cbb_owls_best_odds_archive.yml, scripts/market_readiness.py]
 permissions:
   contents: read
-
 concurrency:
   group: cbb-owls-best-odds-archive
   cancel-in-progress: false
-
 jobs:
   archive:
-    if: github.event_name == 'workflow_dispatch' || vars.CBB_ODDS_ARCHIVE_ENABLED == 'true'
+    if: vars.CBB_MARKET_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PYTHONPATH: .
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-
-      - name: Install runtime dependencies
-        run: pip install -r requirements.txt
-
-      - name: Select capture mode
-        id: capture_mode
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=hourly" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Archive Owls best odds
+      - run: python -m pip install -r requirements.txt
+      - name: Check upcoming published slate; off-season stays idle
+        id: readiness
         env:
-          PYTHONPATH: ${{ github.workspace }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}
+          OWLS_INSIGHT_API_KEY: ${{ secrets.OWLS_INSIGHT_API_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/market_readiness.py | tee market-readiness.json
+      - name: Archive hourly odds on production only
+        if: github.ref == 'refs/heads/main' && (steps.readiness.outputs.active == 'true' || github.event_name == 'workflow_dispatch')
+        env:
           OWLS_INSIGHT_API_KEY: ${{ secrets.OWLS_INSIGHT_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python scripts/archive_owls_best_odds.py --mode "${{ steps.capture_mode.outputs.mode }}"
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAPTURE_MODE: ${{ inputs.mode || 'hourly' }}
+        run: python scripts/archive_owls_best_odds.py --mode "$CAPTURE_MODE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: market-readiness
+          path: market-readiness.json
+          retention-days: 7

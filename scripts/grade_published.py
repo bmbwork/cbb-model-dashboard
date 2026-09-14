@@ -14,6 +14,7 @@ from cbb_dashboard.performance import slate_grade_metrics
 
 def main():
     parser=argparse.ArgumentParser(); parser.add_argument('--apply', action='store_true'); parser.add_argument('--lookback-days',type=int,default=14); args=parser.parse_args()
+    if not 1 <= args.lookback_days <= 90: parser.error('lookback-days must be between 1 and 90')
     key=os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_SECRET_KEY')
     if not key: raise RuntimeError('Supabase server credential is missing')
     client=create_client(os.environ['SUPABASE_URL'], key)
@@ -39,8 +40,12 @@ def main():
         now=datetime.now(timezone.utc).isoformat()
         patch={'grading_json':rows,'grading_sha256':digest,'grading_filename':f'cbb_final_scores_{day}.json','graded_at':now,'graded_by':'system:final-score-poller','metrics_json':metrics,'updated_at':now}
         if args.apply:
-            client.table('cbb_slate_revisions').update({'record':{**record,**patch}}).eq('slate_date',day).eq('revision',item['revision']).eq('board_sha256',item['board_sha256']).execute()
+            saved=client.table('cbb_slate_revisions').update({'record':{**record,**patch}}).eq('slate_date',day).eq('revision',item['revision']).eq('board_sha256',item['board_sha256']).execute().data or []
+            if len(saved)!=1: raise RuntimeError('Archived CBB revision changed during grading')
             client.table('cbb_slates').update(patch).eq('slate_date',day).eq('revision',item['revision']).eq('board_sha256',item['board_sha256']).execute()
+            verified=client.table('cbb_slate_revisions').select('record').eq('slate_date',day).eq('revision',item['revision']).eq('board_sha256',item['board_sha256']).execute().data or []
+            if len(verified)!=1 or verified[0]['record'].get('grading_sha256')!=digest:
+                raise RuntimeError('CBB grading readback did not match')
         changed+=1
     print(json.dumps({'apply':args.apply,'revisions_scanned':len(records),'changed_revisions':changed,'final_rows':final_rows}))
 
