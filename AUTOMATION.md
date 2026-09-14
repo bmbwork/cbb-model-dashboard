@@ -18,19 +18,29 @@ The dispatcher state file is:
 
 `~/.config/stat_factory/cbb_dispatch_state.json`
 
-## Runtime isolation
+## Background-safe runtime isolation
 
-The launchd interpreter is intentionally kept outside Desktop/iCloud/File Provider paths:
+Production `launchd` jobs do not execute Python, dashboard code, or the private champion from Desktop/iCloud File Provider paths.
 
-`~/Library/Application Support/StatFactory/CBB/venv/bin/python`
+Managed locations:
 
-The installer builds that managed Python 3.12 environment from `requirements-automation.lock`, validates imports, validates the frozen champion/configuration, and then installs the LaunchAgent.
+- automation Python: `~/Library/Application Support/StatFactory/CBB/venv/bin/python`
+- dashboard runtime: `~/Library/Application Support/StatFactory/CBB/dashboard_runtime`
+- private champion runtime: `~/Library/Application Support/StatFactory/CBB/champion_runtime`
+- protected config: `~/.config/stat_factory/cbb_automation.json`
+- protected publishing env: `~/.config/stat_factory/cbb_automation.env`
+
+The model-refresh installer stages the current dashboard automation code and the private frozen champion into Application Support. It rebuilds the champion's Python 3.12 virtual environment from the champion's own `requirements.txt`, verifies the staged V1.1.3B source files byte-for-byte by SHA-256, and then validates the automation layer before installing the LaunchAgent.
+
+The original Git checkout and private champion source can remain on Desktop for manual development/inspection. After installation they are source copies only; the background jobs point at the managed Application Support copies.
 
 Install or repair:
 
 ```bash
 bash scripts/install_cbb_model_refresh_launchd.sh "/path/to/private/CBB champion"
 ```
+
+If the installer has already recorded the source path, the argument can be omitted on later repairs.
 
 Uninstall only the forecast LaunchAgent:
 
@@ -40,7 +50,13 @@ bash scripts/install_cbb_model_refresh_launchd.sh --uninstall
 
 ## Progressive grading
 
-`com.statfactory.cbb-auto-grade` is separate from forecasting. It polls finals and grades only verified completed games. Its launcher also uses the managed App Support runtime rather than the repository `.venv`.
+`com.statfactory.cbb-auto-grade` is separate from forecasting. It polls finals and grades only verified completed games. Run its installer after the model-refresh installer has migrated the shared managed runtime:
+
+```bash
+bash scripts/install_cbb_auto_grade_launchd.sh
+```
+
+The auto-grader refreshes the managed dashboard code and points its LaunchAgent at the same Application Support runtime. It does not switch back to the source Git checkout.
 
 GitHub's `progressive_grading.yml` remains the cloud grading path. Forecasting stays local because the private frozen champion is not stored in the public dashboard repository.
 
@@ -57,6 +73,11 @@ Forecast dispatcher:
 - `~/Library/Logs/StatFactory/CBB/forecast_dispatch.log`
 - `~/Library/Logs/StatFactory/CBB/forecast_dispatch_error.log`
 
+Automatic grader:
+
+- `~/Library/Logs/StatFactory/CBB/auto_grader.log`
+- `~/Library/Logs/StatFactory/CBB/auto_grader_error.log`
+
 Latest model refresh summary:
 
 - `~/Library/Logs/StatFactory/CBB/last_refresh.json`
@@ -68,11 +89,13 @@ These validate configuration without running the model or writing to Supabase:
 ```bash
 STAT_FACTORY_HEADLESS_AUTOMATION=1 \
   "$HOME/Library/Application Support/StatFactory/CBB/venv/bin/python" \
-  scripts/dispatch_cbb_model_refresh.py --dry-run
+  "$HOME/Library/Application Support/StatFactory/CBB/dashboard_runtime/scripts/dispatch_cbb_model_refresh.py" \
+  --dry-run
 ```
 
 ```bash
 STAT_FACTORY_HEADLESS_AUTOMATION=1 \
   "$HOME/Library/Application Support/StatFactory/CBB/venv/bin/python" \
-  scripts/run_cbb_auto_grade.py --dry-run
+  "$HOME/Library/Application Support/StatFactory/CBB/dashboard_runtime/scripts/run_cbb_auto_grade.py" \
+  --dry-run
 ```
