@@ -1894,10 +1894,11 @@
     },
     {
       "aliases": [
+        "LSU N Orleans",
         "LSU New Orleans",
         "LSU New Orleans Privateers",
-        "LSU N Orleans",
         "NOLA",
+        "New Orleans",
         "lsu-new-orleans-privateers"
       ],
       "asset": "2443.png",
@@ -3896,10 +3897,11 @@
     },
     {
       "aliases": [
+        "STMN",
+        "St Thomas",
         "St. Thomas",
         "St. Thomas Tommies",
-        "St Thomas",
-        "STMN",
+        "St. Thomas-Minnesota",
         "st-thomas-tommies"
       ],
       "asset": "2900.png",
@@ -5055,6 +5057,47 @@
       "id": "2754",
       "sha256": "83b3bdba7289a755049d840614cac9c7eeddc08473ae86bc77dc9980eb958eed",
       "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/2754.png"
+    },
+    {
+      "aliases": [
+        "QUC",
+        "Queens",
+        "Queens University",
+        "Queens University Royals"
+      ],
+      "asset": "2511.png",
+      "display_name": "Queens University Royals",
+      "historical_identity_source": "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260207&groups=50&limit=500",
+      "id": "2511",
+      "sha256": "e743889cdf9175d30380ecbb4934e3d7456c1f78268d08fd05b2169b14ac7eca",
+      "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/2511.png"
+    },
+    {
+      "aliases": [
+        "S Indiana",
+        "Southern Indiana",
+        "Southern Indiana Screaming Eagles",
+        "USI"
+      ],
+      "asset": "88.png",
+      "display_name": "Southern Indiana Screaming Eagles",
+      "historical_identity_source": "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260207&groups=50&limit=500",
+      "id": "88",
+      "sha256": "da6879b895f787d063a486fdeb4163afe239e122e5994c1b3f125806ac893c76",
+      "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/88.png"
+    },
+    {
+      "aliases": [
+        "MRST",
+        "Marist",
+        "Marist Red Foxes"
+      ],
+      "asset": "2368.png",
+      "display_name": "Marist Red Foxes",
+      "historical_identity_source": "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=20260207&groups=50&limit=500",
+      "id": "2368",
+      "sha256": "162eb530165c691ddcceeb0635eeb1c39b49c0edb0bf454925bc2d9382edc298",
+      "source_url": "https://a.espncdn.com/i/teamlogos/ncaa/500/2368.png"
     }
   ]
 }
