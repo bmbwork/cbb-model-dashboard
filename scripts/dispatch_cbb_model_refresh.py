@@ -119,39 +119,67 @@ def retry_allowed(state: dict[str, Any], target: date, stage: str, now: datetime
     return now.astimezone(timezone.utc) >= last + wait
 
 
+def mark_superseded(state: dict[str, Any], target: date, stage: str, now: datetime) -> None:
+    if stage_done(state, target, stage):
+        return
+    state.setdefault("stages", {})[stage_key(target, stage)] = {
+        "status": "superseded",
+        "attempts": 0,
+        "attempted_at_utc": now.astimezone(timezone.utc).isoformat(),
+        "returncode": 0,
+    }
+
+
 def due_actions(
     now: datetime,
     state: dict[str, Any],
     today_first_tip_utc: datetime | None,
 ) -> list[tuple[str, date, datetime]]:
+    """Return due model revisions without backfilling a stage after a later stage is due.
+
+    The previous-evening EARLY revision may be caught up after sleep/restart, but only
+    until the MID window opens. Once MID or LATE is due, the older stage is obsolete.
+    """
     local_now = now.astimezone(TZ)
     today = local_now.date()
     actions: list[tuple[str, date, datetime]] = []
 
-    tomorrow = today + timedelta(days=1)
-    early_due = _local_dt(today, EARLY_LOCAL)
-    if local_now >= early_due and not stage_done(state, tomorrow, "early") and retry_allowed(state, tomorrow, "early", local_now):
-        actions.append(("early", tomorrow, early_due))
-
     before_tip = today_first_tip_utc is None or local_now < today_first_tip_utc.astimezone(TZ)
     no_board_window_open = today_first_tip_utc is not None or local_now <= _local_dt(today, MID_NO_BOARD_CUTOFF_LOCAL)
     if before_tip and no_board_window_open:
+        middle_due = mid_due_time(today, today_first_tip_utc)
         late_due = late_due_time(today_first_tip_utc) if today_first_tip_utc is not None else None
+        missed_early_due = _local_dt(today - timedelta(days=1), EARLY_LOCAL)
+
         if (
+            local_now >= missed_early_due
+            and local_now < middle_due
+            and not stage_done(state, today, "early")
+            and retry_allowed(state, today, "early", local_now)
+        ):
+            actions.append(("early", today, missed_early_due))
+        elif (
             late_due is not None
             and local_now >= late_due
             and not stage_done(state, today, "late")
             and retry_allowed(state, today, "late", local_now)
         ):
             actions.append(("late", today, late_due))
-        else:
-            middle_due = mid_due_time(today, today_first_tip_utc)
-            if (
-                local_now >= middle_due
-                and not stage_done(state, today, "mid")
-                and retry_allowed(state, today, "mid", local_now)
-            ):
-                actions.append(("mid", today, middle_due))
+        elif (
+            local_now >= middle_due
+            and not stage_done(state, today, "mid")
+            and retry_allowed(state, today, "mid", local_now)
+        ):
+            actions.append(("mid", today, middle_due))
+
+    tomorrow = today + timedelta(days=1)
+    early_due = _local_dt(today, EARLY_LOCAL)
+    if (
+        local_now >= early_due
+        and not stage_done(state, tomorrow, "early")
+        and retry_allowed(state, tomorrow, "early", local_now)
+    ):
+        actions.append(("early", tomorrow, early_due))
 
     return actions
 
@@ -231,7 +259,7 @@ def main() -> int:
     if args.dry_run:
         print("CBB forecast dispatcher dry run")
         print(f"Local time:  {now.isoformat()}")
-        print("Cadence:     early = 18:15 CT for tomorrow")
+        print("Cadence:     early = 18:15 CT for tomorrow, with pre-mid catch-up after sleep/restart")
         print("             mid   = max(06:15 CT, first tip - 10h); fallback 08:15 CT before 10:00 CT if no board exists")
         print("             late  = first tip - 3h")
         print("Poll:        every 30 minutes via launchd")
@@ -269,13 +297,11 @@ def main() -> int:
         code = run_stage(web_root, target, stage)
         if code == 0:
             record_attempt(state, target, stage, "completed", now, code)
-            if stage == "late" and not stage_done(state, target, "mid"):
-                state.setdefault("stages", {})[stage_key(target, "mid")] = {
-                    "status": "superseded",
-                    "attempts": 0,
-                    "attempted_at_utc": now.astimezone(timezone.utc).isoformat(),
-                    "returncode": 0,
-                }
+            if stage == "mid":
+                mark_superseded(state, target, "early", now)
+            elif stage == "late":
+                mark_superseded(state, target, "early", now)
+                mark_superseded(state, target, "mid", now)
         else:
             failures += 1
             record_attempt(state, target, stage, "failed", now, code)
