@@ -1,4 +1,5 @@
 name: One-time CBB Champion Upload
+# Temporary private transport workflow; never merge.
 
 on:
   push:
