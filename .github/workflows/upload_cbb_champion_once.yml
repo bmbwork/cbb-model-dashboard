@@ -1,0 +1,61 @@
+name: One-time CBB Champion Upload
+
+on:
+  push:
+    branches:
+      - ops/upload-cbb-champion-once
+    paths:
+      - ".ops/cbb_champion/**"
+      - ".github/workflows/upload_cbb_champion_once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: "https://mtiwegegbmheefqombrw.supabase.co"
+      SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}
+      EXPECTED_SHA256: "9f19e60919a676e842b54093b8d000478a3c228fc8328a6a4c8354abff576452"
+      OBJECT_PATH: "cbb/production/CBB_V1_1_3B_Champion.zip"
+
+    steps:
+      - name: Check out temporary upload branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct and verify champion package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ops/cbb_champion/part*.b64 | tr -d '\n' | base64 -d > /tmp/CBB_V1_1_3B_Champion.zip
+          printf '%s  %s\n' "$EXPECTED_SHA256" /tmp/CBB_V1_1_3B_Champion.zip | sha256sum -c -
+          unzip -t /tmp/CBB_V1_1_3B_Champion.zip
+          test -n "$SUPABASE_KEY"
+
+      - name: Upload verified champion to private Supabase Storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X POST "$SUPABASE_URL/storage/v1/object/cbb/$OBJECT_PATH" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "x-upsert: true" \
+            -H "Content-Type: application/zip" \
+            --data-binary @/tmp/CBB_V1_1_3B_Champion.zip
+
+      - name: Download and independently verify stored bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            "$SUPABASE_URL/storage/v1/object/authenticated/cbb/$OBJECT_PATH" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -H "apikey: $SUPABASE_KEY" \
+            -o /tmp/CBB_V1_1_3B_Champion.downloaded.zip
+          printf '%s  %s\n' "$EXPECTED_SHA256" /tmp/CBB_V1_1_3B_Champion.downloaded.zip | sha256sum -c -
