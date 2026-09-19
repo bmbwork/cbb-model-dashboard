@@ -2,6 +2,17 @@
 
 This repository owns the website/publishing automation around the frozen **CBB V1.1.3B** champion. The private champion itself is not committed here.
 
+The approved minimal champion package is also preserved in private Supabase Storage for recovery/cloud execution:
+
+```text
+bucket: cbb
+object: cbb/production/CBB_V1_1_3B_Champion.zip
+size:   15580 bytes
+sha256: 9f19e60919a676e842b54093b8d000478a3c228fc8328a6a4c8354abff576452
+```
+
+That object was round-trip verified after upload. The managed macOS runtime remains the active forecasting scheduler until a cloud production runner is separately validated against the same frozen package; storing the artifact does not silently switch execution hosts.
+
 ## Forecast cadence
 
 `com.statfactory.cbb-model-refresh` is a lightweight macOS `launchd` dispatcher that polls every 30 minutes.

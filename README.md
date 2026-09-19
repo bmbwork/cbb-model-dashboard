@@ -2,6 +2,24 @@
 
 V1.6.0 is a **public-interface and slate-discovery release**. The forecasting champion remains frozen at **CBB V1.1.3B**, and sportsbook information remains downstream of the market-blind model.
 
+
+## Production champion artifact
+
+The frozen **CBB V1.1.3B** production champion runtime is now stored in the private CBB Supabase bucket at:
+
+```text
+cbb/production/CBB_V1_1_3B_Champion.zip
+```
+
+Verified artifact identity:
+
+```text
+size:   15580 bytes
+sha256: 9f19e60919a676e842b54093b8d000478a3c228fc8328a6a4c8354abff576452
+```
+
+The canonical package contains only the approved frozen champion source/runtime surface required for prediction and grading. Training data, caches, generated predictions, virtual environments, and secret files are excluded. The uploaded object was downloaded again from private Supabase Storage and its SHA-256 was independently reverified after upload.
+
 ## Public product structure
 
 The sidebar is intentionally reduced to:
