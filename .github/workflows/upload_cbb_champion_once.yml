@@ -2,6 +2,9 @@ name: One-time CBB Champion Upload
 # Temporary private transport workflow; never merge.
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - ops/upload-cbb-champion-once
