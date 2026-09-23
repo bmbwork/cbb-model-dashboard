@@ -1,3 +1,6 @@
+> **AUTHORITATIVE REPOSITORY CONTEXT — 2026-09-23**  
+> This file documents a sub-area of `bmbwork/cbb-model-dashboard`. The repository root `README.md` is the first stop for current production ownership, infrastructure, access rules, and emergency-maintainer guidance. Current production identity: **CBB V1.1.3B**. Files under research/experiment/archive/config/model subdirectories may intentionally describe non-production or historical work; do not promote or deploy them solely because their local README sounds newer. Verify the root README, production handoff/manifest, `main`, and current workflows before editing production.
+
 # CBB Supabase Operations
 
 > **Authoritative maintainer note — 2026-09-23**
