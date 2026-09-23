@@ -15,6 +15,7 @@
 - `app.py` — Streamlit entrypoint.
 - `stat_factory_access.py` — membership wall.
 - `docs/PRODUCTION_HANDOFF.md` — champion package identity.
+- `supabase/README.md` — production Supabase project, security and incident guide.
 - `supabase/schema.sql` — database contract.
 - `supabase/functions/stat-factory-health/index.ts` — child health function.
 - `AUTOMATION.md` — production automation notes.
