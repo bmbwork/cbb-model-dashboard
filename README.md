@@ -1,3 +1,48 @@
+<!-- STAT_FACTORY_EMERGENCY_MAINTAINER -->
+> **CBB INTELLIGENCE — EMERGENCY MAINTAINER NOTES — updated 2026-09-23**
+>
+> Repository: `bmbwork/cbb-model-dashboard`  
+> Production champion: **CBB V1.1.3B**  
+> Supabase project: `mtiwegegbmheefqombrw`  
+> Streamlit entrypoint: `app.py`  
+> Live dashboard: `https://cbb-model-dashboard.streamlit.app/`
+>
+> **Before editing production:** verify current `main`, current production health, the latest successful production workflow, and the relevant production handoff/manifest. Research branches, experiment folders, archived release notes, and UI version numbers do not promote a model by themselves.
+
+## Emergency maintainer context
+
+- Dashboard/UI release numbers such as v1.6.0 are not model versions. The forecasting champion remains CBB V1.1.3B.
+- Champion artifact: cbb/production/CBB_V1_1_3B_Champion.zip; SHA-256 9f19e60919a676e842b54093b8d000478a3c228fc8328a6a4c8354abff576452.
+- Owl sportsbook information, splits, line movement, CLV, and analyst picks are downstream and must not alter the frozen forecast.
+- CBB is seasonal; offseason idle health is not automatically an incident.
+- The health Edge Function should prefer a modern Supabase secret key before the legacy service-role JWT fallback.
+
+### Files to inspect first
+
+- `docs/PRODUCTION_HANDOFF.md` — champion/artifact handoff
+- `app.py` — Streamlit entrypoint
+- `stat_factory_access.py` — parent access wall
+- `cbb_dashboard/` — dashboard/domain code
+- `supabase/schema.sql` — database contract
+- `supabase/functions/stat-factory-health/index.ts` — parent health contract
+- `.github/workflows/game_board_ci.yml` — board QA
+- `.github/workflows/production_health.yml` — health
+- `.github/workflows/cbb_owls_best_odds_archive.yml` — market archive
+- `.github/workflows/progressive_grading.yml` — grading
+
+### Non-negotiable production rules
+
+- Preserve the market-blind model / downstream sportsbook firewall.
+- Preserve immutable published forecast revisions and provenance.
+- Do not fabricate missing sportsbook prices, splits, probabilities, injuries, lineups, or model outputs.
+- Do not expose Supabase secret/service-role keys, Owl credentials, Streamlit secrets, or admin credentials.
+- The direct Streamlit URL is **not** an authorization mechanism. Production must call the repository's `stat_factory_access` gate before protected content loads.
+- A model change is not a production promotion until evidence is reviewed and the production designation is explicitly updated.
+- Prefer the smallest reversible repair, run repository QA/CI, and verify live behavior after deployment.
+- See `supabase/README.md` for database/Edge Function notes; if it is absent, create/read the infrastructure handoff before changing Supabase.
+
+---
+
 <!-- STAT_FACTORY_AUTHORITATIVE_MAINTAINER_V1 -->
 > ## Stat Factory authoritative maintainer notes — 2026-09-23
 >
