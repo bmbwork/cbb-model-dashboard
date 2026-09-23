@@ -205,3 +205,70 @@ SUPABASE_SECRET_KEY = "..."
 ## Market firewall
 
 Sportsbook odds, consensus, line movement, ticket percentages, handle percentages and sharp-money diagnostics remain downstream. They do not alter CBB V1.1.3B predictions or training.
+
+
+---
+
+## Emergency maintainer / production map
+
+> **Authoritative maintainer note — 2026-09-23.** This repository is a live Stat Factory product. If the owner is unavailable, verify `main`, recent GitHub Actions, Supabase health, and the production handoff before editing. Do not promote research code or change the champion merely because an experiment looks newer.
+
+- **Repository:** `bmbwork/cbb-model-dashboard`
+- **Product:** CBB
+- **Current production champion:** **CBB V1.1.3B**
+- **Supabase project ref:** `mtiwegegbmheefqombrw`
+- **Streamlit:** `https://cbb-model-dashboard.streamlit.app/`
+- **Primary app entrypoint:** `app.py`
+- **Parent platform:** `bmbwork/Stat-Factory` / `https://stat-factory.com`
+- **Sportsbook provider:** Owl Insights; market information is downstream unless an explicitly separate research model says otherwise.
+
+### Files to inspect first
+
+- `docs/PRODUCTION_HANDOFF.md`
+- `AUTOMATION.md`
+- `supabase/schema.sql`
+- `supabase/functions/stat-factory-health/index.ts`
+- `stat_factory_access.py`
+
+### Important workflows
+
+- `.github/workflows/game_board_ci.yml`
+- `.github/workflows/production_health.yml`
+- `.github/workflows/progressive_grading.yml`
+- `.github/workflows/cbb_owls_best_odds_archive.yml`
+- `.github/workflows/public_consensus_hourly.yml`
+- `.github/workflows/analyst_feed_ci.yml`
+- `.github/workflows/automation_regression.yml`
+- `.github/workflows/display_regression.yml`
+
+Research/challenger workflows are evidence-generation tools. Their presence does not constitute production promotion.
+
+### Do not break these rules
+
+- Dashboard/UI version numbers are not model versions. The forecasting champion remains V1.1.3B.
+- Owl market snapshots, betting splits, line movement and CLV remain downstream from the frozen model.
+- The health function prefers the modern Supabase secret key before legacy service-role JWT fallback.
+- Direct Streamlit access must fail closed through stat_factory_access.py.
+- Preserve immutable forecast/publication revisions and provenance.
+- Never fabricate missing odds, splits, injury state, player identity, or results.
+- Never expose Supabase secret/service-role keys, Owl credentials, Streamlit secrets, or admin credentials.
+- Do not weaken RLS to solve an application error.
+- Run tests/CI and verify the live dashboard after any production change.
+
+### If production is unhealthy
+
+1. Check the latest GitHub Actions runs before manually rerunning anything.
+2. Confirm the expected champion/version is what the most recent production publication claims.
+3. Inspect the production health workflow and Supabase health endpoint/function.
+4. Distinguish **model freshness**, **market freshness**, **dashboard availability**, and **access-gate state**; they are separate failure domains.
+5. Check Owl ingestion only after confirming the model publication itself is healthy.
+6. Make the smallest reversible fix and preserve historical rows/artifacts.
+7. QA the raw Streamlit URL and the parent launch route after access/auth changes.
+
+### Access wall
+
+Customers should enter this dashboard through Stat Factory's parent launch flow. A copied/raw Streamlit URL is not authorization. The Streamlit gate exchanges a parent-issued one-time credential and periodically revalidates entitlement with `stat-factory.com`. Keep this fail-closed in production.
+
+### Secrets/config
+
+Use checked-in example files and workflow environment-variable names to discover configuration. Real credentials must stay in GitHub Actions secrets, Streamlit secret storage, Supabase/Vault, or the deployment platform. Never add a real secret to this README.
