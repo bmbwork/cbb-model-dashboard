@@ -1,3 +1,56 @@
+<!-- STAT_FACTORY_AUTHORITATIVE_MAINTAINER_V1 -->
+> ## Stat Factory authoritative maintainer notes — 2026-09-23
+>
+> **Product:** CBB Intelligence  
+> **Production champion:** **CBB V1.1.3B**  
+> **Repository:** `bmbwork/cbb-model-dashboard`  
+> **Supabase project:** `mtiwegegbmheefqombrw`  
+> **Streamlit entrypoint:** `app.py`  
+> **Production dashboard:** `https://cbb-model-dashboard.streamlit.app/`  
+> **Parent product key:** `cbb`
+>
+> If any older section, archived document, experiment folder, or branch conflicts with these notes, verify live production state before editing. The root README plus the verified production handoff/model manifest is authoritative; newer-looking research is not automatically production.
+
+### Maintainer: read these first
+- `app.py` — Streamlit entrypoint.
+- `stat_factory_access.py` — membership wall.
+- `docs/PRODUCTION_HANDOFF.md` — champion package identity.
+- `supabase/schema.sql` — database contract.
+- `supabase/functions/stat-factory-health/index.ts` — child health function.
+- `AUTOMATION.md` — production automation notes.
+
+### Current workflow map
+- `.github/workflows/cbb_owls_best_odds_archive.yml`
+- `.github/workflows/production_health.yml`
+- `.github/workflows/progressive_grading.yml`
+- `.github/workflows/public_consensus_hourly.yml`
+- `.github/workflows/analyst_feed_ci.yml`
+- `.github/workflows/automation_regression.yml`
+- `.github/workflows/display_regression.yml`
+- `.github/workflows/game_board_ci.yml`
+
+### Do-not-break rules
+- Dashboard/UI version numbers are not the forecasting-model version. The champion remains V1.1.3B.
+- The champion package SHA-256 is `9f19e60919a676e842b54093b8d000478a3c228fc8328a6a4c8354abff576452`.
+- Odds, splits, line movement and CLV are downstream and must never rewrite V1.1.3B forecasts.
+- Modern Supabase secret keys should be preferred before legacy service-role JWT fallback in health/server code.
+- Owl/sportsbook information remains downstream from the market-blind production forecast unless a separately named research model explicitly says otherwise.
+- Keep secrets server-side. Never commit Supabase secret/service-role keys, Owl credentials, admin credentials, or Streamlit secrets.
+- `stat_factory_access.py` (or the dashboard-local equivalent) must run before protected terminal data renders. A raw Streamlit URL must not bypass the Stat Factory entitlement wall.
+- Preserve immutable forecast revisions and provenance. Do not edit historical predictions in place to match later outcomes or market moves.
+- Before production changes: verify model version -> inspect recent workflows/health -> make the smallest reversible change -> run tests/CI -> verify live behavior.
+
+### If the owner is unavailable
+1. Do not promote or replace a model first.
+2. Inspect recent GitHub Actions and the production health endpoint.
+3. Confirm the current board/model version in Supabase.
+4. Separate model problems from market-feed, database, access-gate, and UI problems.
+5. Do not delete production tables, buckets, migrations, secrets, or artifacts as a troubleshooting shortcut.
+6. Record any manual production action and its reason.
+7. For cross-product identity, billing, entitlements and launch behavior, consult `bmbwork/Stat-Factory`.
+
+---
+
 # CBB Model Dashboard v1.6.0 — Stat Factory UI Polish
 
 V1.6.0 is a **public-interface and slate-discovery release**. The forecasting champion remains frozen at **CBB V1.1.3B**, and sportsbook information remains downstream of the market-blind model.
