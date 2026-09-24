@@ -231,34 +231,34 @@ def signal_readout(row: pd.Series) -> tuple[list[str], list[str]]:
         diff = home_net - away_net
         signed = diff if pick_is_home else -diff
         if signed >= 3:
-            positives.append(f"{pick} has the stronger overall team-efficiency profile by {signed:.1f} points.")
+            positives.append(f"After adjusting for opponent quality, {pick} has been the stronger team overall.")
         elif signed <= -3:
-            risks.append(f"{opponent} has the stronger overall team-efficiency profile by {abs(signed):.1f} points.")
+            risks.append(f"After adjusting for opponent quality, {opponent} has been the stronger team overall.")
 
     pick_o = _team_value(row, pick, "AdjO")
     pick_d = _team_value(row, pick, "AdjD")
     opp_o = _team_value(row, opponent, "AdjO")
     opp_d = _team_value(row, opponent, "AdjD")
     if np.isfinite(pick_o) and pick_o >= 116:
-        positives.append(f"{pick} rates as a high-end offense after adjusting for opponent strength (offense rating {pick_o:.1f}).")
+        positives.append(f"The model sees {pick}'s offense as a major strength after accounting for who they have played.")
     if np.isfinite(pick_d) and pick_d <= 99:
-        positives.append(f"{pick} rates as a strong defense after adjusting for opponent strength (defense rating {pick_d:.1f}; lower is better).")
+        positives.append(f"The model sees {pick}'s defense as a major strength after accounting for who they have played.")
     if np.isfinite(opp_d):
         if opp_d >= 108:
-            positives.append(f"{opponent}'s defense has been easier to score on than most (defense rating {opp_d:.1f}).")
+            positives.append(f"{opponent}'s defense has been easier to score on than most teams in the model's adjusted view.")
         elif opp_d <= 98:
-            risks.append(f"{opponent} has a strong defense (defense rating {opp_d:.1f}; lower is better).")
+            risks.append(f"{opponent} brings a strong defense that can keep this game tighter than the headline pick suggests.")
     if np.isfinite(opp_o) and opp_o >= 116:
-        risks.append(f"{opponent} has a high-end offense (offense rating {opp_o:.1f}).")
+        risks.append(f"{opponent} has a dangerous offense, so the model pick may need to win a high-quality scoring matchup.")
 
     pick_sos = _sos_value(row, pick)
     opp_sos = _sos_value(row, opponent)
     if np.isfinite(pick_sos) and np.isfinite(opp_sos):
         signed = pick_sos - opp_sos
         if signed >= 3:
-            positives.append(f"{pick} has played a meaningfully tougher schedule than {opponent} (schedule-strength edge {signed:.1f}).")
+            positives.append(f"{pick} has been tested by a meaningfully tougher schedule than {opponent}.")
         elif signed <= -3:
-            risks.append(f"{opponent} has played a meaningfully tougher schedule than {pick} (schedule-strength edge {abs(signed):.1f}).")
+            risks.append(f"{opponent} has been tested by a meaningfully tougher schedule than {pick}.")
 
     hmatch = _num(row, "Home Matchup Adj /100")
     amatch = _num(row, "Away Matchup Adj /100")
@@ -271,7 +271,7 @@ def signal_readout(row: pd.Series) -> tuple[list[str], list[str]]:
 
     p = _num(row, "Win Probability")
     if np.isfinite(p) and p < 0.58:
-        risks.append(f"This is a close game: the model gives {pick} less than a 58% chance to win.")
+        risks.append(f"This is a close game: {pick} is the pick, but the model gives it only {p*100:.1f}% to win.")
     quality = _num(row, "Data Quality")
     if np.isfinite(quality) and quality < 55:
         risks.append(f"The model inputs are incomplete or lower-confidence for this game ({quality:.0f}/100 data confidence).")
@@ -484,14 +484,25 @@ def matchup_battle_html(row: pd.Series, focus_team: str | None = None) -> str:
 def evidence_html(row: pd.Series) -> str:
     positives, risks = signal_readout(row)
 
+    def evidence_kind(text: str) -> str:
+        lowered = text.lower()
+        market_words = ("market", "betting", "sharp-money", "sportsbook", "crowd", "ticket", "money side")
+        return "MARKET" if any(word in lowered for word in market_words) else "MODEL"
+
     def lis(items: Iterable[str]) -> str:
-        return "".join(f"<li>{esc(x)}</li>" for x in items)
+        rows = []
+        for item in items:
+            kind = evidence_kind(str(item))
+            rows.append(
+                f'<li><span class="evidence-tag {kind.lower()}">{kind}</span> {esc(item)}</li>'
+            )
+        return "".join(rows)
 
     pick = str(row.get("Model Pick") or "the pick")
     return compact_html(f"""
       <div class="evidence-grid">
-        <div class="evidence-box positive"><div class="evidence-title">WHY THE MODEL LIKES {esc(pick)}</div><ul class="evidence-list">{lis(positives)}</ul></div>
-        <div class="evidence-box risk"><div class="evidence-title">WHAT CAN BEAT THE PICK</div><ul class="evidence-list">{lis(risks)}</ul></div>
+        <div class="evidence-box positive"><div class="evidence-title">WHY {esc(pick)} IS THE PICK</div><ul class="evidence-list">{lis(positives)}</ul></div>
+        <div class="evidence-box risk"><div class="evidence-title">WHAT COULD GO WRONG</div><ul class="evidence-list">{lis(risks)}</ul></div>
       </div>
     """)
 
@@ -878,13 +889,13 @@ def best_odds_html(row: pd.Series) -> str:
 
     move = current_spread - open_spread if np.isfinite(current_spread) and np.isfinite(open_spread) else float("nan")
     if not np.isfinite(move):
-        signal, tone = "Movement unavailable", "muted"
+        signal, tone = f"Market movement not available for {pick}", "muted"
     elif abs(move) < 0.05:
-        signal, tone = "Market flat on model pick", "muted"
+        signal, tone = f"Market steady on {pick}", "muted"
     elif move < 0:
-        signal, tone = f"Market moved {abs(move):.1f} pts toward {pick}", "orange"
+        signal, tone = f"Market heating on {pick} · {abs(move):.1f} pts toward the pick", "orange"
     else:
-        signal, tone = f"Market moved {abs(move):.1f} pts away from {pick}", "teal"
+        signal, tone = f"Market cooling on {pick} · {abs(move):.1f} pts away from the pick", "teal"
 
     decision, _ = decision_home_spread(row)
     selected_decision = selected_team_spread(row, decision)
@@ -928,8 +939,9 @@ def dossier_html(row: pd.Series) -> str:
     """)
     return compact_html(f"""
       <details class="intel-dossier">
-        <summary><span>Why this pick?</span><span>Model evidence · matchup · sportsbook context ＋</span></summary>
+        <summary><span>Game intelligence dossier</span><span>Why the pick · what could go wrong · market context ＋</span></summary>
         <div class="dossier-body">
+          <div class="firewall-note"><strong>Model firewall:</strong> MODEL = what Stat Factory predicted before sportsbook data was added. MARKET = odds and betting data attached later. Market information never changes the original model pick.</div>
           {evidence_html(row)}
           {betting_market_note_html(row)}
           {team_snapshot_html(row)}
