@@ -149,7 +149,10 @@ GLOBAL_CSS = r"""
 .evidence-box.risk { border-color:rgba(251,113,133,.20); background:rgba(251,113,133,.035); }
 .evidence-title { font-size:.66rem; font-weight:950; letter-spacing:.07em; text-transform:uppercase; color:#fff7f0; margin-bottom:7px; }
 .evidence-list { margin:0; padding-left:17px; color:#d1c1b8; font-size:.72rem; line-height:1.48; }
-.evidence-list li { margin:3px 0; }
+.evidence-list li { margin:5px 0; }
+.evidence-tag { display:inline-flex; align-items:center; border:1px solid rgba(148,163,184,.18); border-radius:999px; padding:2px 6px; margin-right:6px; font-size:.48rem; line-height:1.15; font-weight:900; letter-spacing:.06em; vertical-align:1px; }
+.evidence-tag.model { color:#b9f5ef; border-color:rgba(45,212,191,.22); background:rgba(45,212,191,.06); }
+.evidence-tag.market { color:#ffe6a8; border-color:rgba(251,191,36,.25); background:rgba(251,191,36,.06); }
 
 .compare-shell { display:grid; grid-template-columns:1fr auto 1fr; align-items:stretch; gap:8px; margin:10px 0; }
 .compare-side { border:1px solid var(--line-soft); border-radius:13px; padding:12px; background:rgba(255,255,255,.018); }
