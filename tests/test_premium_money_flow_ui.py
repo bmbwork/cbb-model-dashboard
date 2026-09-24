@@ -29,4 +29,6 @@ def test_premium_split_panel_uses_money_bar_with_ticket_context():
     assert "MONEYLINE MONEY" in html
     assert "TOTAL MONEY" in html
     assert "Tickets:" in html
-    assert html.count("cbb-money-bar") == 3
+    assert "BETTING SPLITS · DRAFTKINGS" in html
+    assert "Money = handle share" in html
+    assert html.count("sf-money-bar") == 3
