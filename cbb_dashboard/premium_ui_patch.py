@@ -27,6 +27,8 @@ PREMIUM_CSS = r"""
 .cbb-logo-matchup{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.7rem;border:1px solid rgba(249,115,22,.20);border-radius:14px;background:linear-gradient(110deg,rgba(249,115,22,.075),rgba(20,10,12,.82),rgba(251,191,36,.035));padding:.62rem .7rem;margin:0 0 .62rem}.cbb-logo-team{display:flex;align-items:center;gap:.52rem;min-width:0}.cbb-logo-team.home{justify-content:flex-end;text-align:right}.cbb-logo-team img,.cbb-logo-fallback{width:2rem;height:2rem;object-fit:contain;flex:0 0 2rem}.cbb-logo-fallback{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(249,115,22,.10);border:1px solid rgba(249,115,22,.28);color:#ffd0a8;font-size:.62rem;font-weight:900}.cbb-logo-team strong{display:block;color:#fff7f1;font-size:.83rem;line-height:1.1}.cbb-logo-team small{display:block;color:#a18479;font-size:.56rem;margin-top:.13rem}.cbb-logo-vs{color:#936f62;font-size:.62rem;font-weight:900}
 .cbb-money-shell{border:1px solid rgba(249,115,22,.18);border-radius:14px;background:linear-gradient(145deg,rgba(27,11,14,.96),rgba(14,8,10,.98));padding:.72rem .76rem;margin:.64rem 0}.cbb-money-head{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.58rem}.cbb-money-head strong{color:#ffb56f;font-size:.67rem;letter-spacing:.08em}.cbb-money-head span{color:#927b73;font-size:.55rem}.cbb-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.cbb-money-card{border:1px solid rgba(148,163,184,.11);border-radius:11px;background:linear-gradient(180deg,rgba(255,255,255,.024),rgba(255,255,255,.012));padding:.58rem .60rem;min-width:0}.cbb-money-title{color:#f5ded2;font-size:.59rem;font-weight:900;letter-spacing:.07em;margin-bottom:.34rem}.cbb-money-lead{color:#fff8f4;font-size:.70rem;font-weight:800;line-height:1.24;margin-bottom:.40rem;min-height:1.75em}.cbb-money-meter{position:relative;height:1.58rem;border-radius:8px;overflow:hidden;background:#271a1d;border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}.cbb-money-fill{position:absolute;top:0;bottom:0;z-index:1}.cbb-money-fill.left{left:0;background:linear-gradient(90deg,#088f59,#20c982)}.cbb-money-fill.right{right:0;background:linear-gradient(90deg,#e84b5e,#f06470)}.cbb-money-pct{position:absolute;top:50%;transform:translateY(-50%);z-index:3;color:#fff;font-size:.61rem;font-weight:950;line-height:1;padding:.18rem .30rem;border-radius:999px;background:rgba(8,10,12,.68);border:1px solid rgba(255,255,255,.13);text-shadow:0 1px 2px rgba(0,0,0,.65);white-space:nowrap}.cbb-money-pct.left{left:.24rem}.cbb-money-pct.right{right:.24rem}.cbb-money-labels{display:flex;justify-content:space-between;gap:.42rem;color:#b9a197;font-size:.56rem;margin-top:.31rem}.cbb-money-labels span{min-width:0;overflow-wrap:anywhere}.cbb-ticket-line{color:#927f76;font-size:.54rem;margin-top:.32rem;line-height:1.34}.cbb-money-legend{display:flex;gap:.5rem;align-items:center;color:#806c64;font-size:.51rem;margin-top:.45rem}.cbb-money-legend i{display:inline-block;width:.42rem;height:.42rem;border-radius:50%;margin-right:.18rem}.cbb-money-legend .green{background:#20c982}.cbb-money-legend .red{background:#f06470}
 @media(max-width:900px){.cbb-money-grid{grid-template-columns:1fr}.cbb-logo-team img,.cbb-logo-fallback{width:1.72rem;height:1.72rem;flex-basis:1.72rem}.cbb-logo-team strong{font-size:.75rem}}
+.sf-money-shell{border:1px solid rgba(52,211,153,.18);border-radius:15px;background:linear-gradient(145deg,rgba(9,26,18,.96),rgba(5,16,12,.98));padding:.72rem .78rem;margin:.48rem 0 .78rem}.sf-money-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.6rem}.sf-money-head strong{color:#92f4c5;font-size:.69rem;letter-spacing:.09em}.sf-money-head span{color:#6d8d7d;font-size:.57rem}.sf-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.sf-money-card{border:1px solid rgba(148,163,184,.10);border-radius:11px;background:rgba(255,255,255,.018);padding:.58rem .62rem}.sf-money-title{color:#d9eadf;font-size:.61rem;font-weight:900;letter-spacing:.075em;margin-bottom:.35rem}.sf-money-lead{color:#f5fbf7;font-size:.72rem;font-weight:800;line-height:1.25;margin-bottom:.38rem;min-height:1.8em}.sf-money-bar{height:1.38rem;display:flex;border-radius:7px;overflow:hidden;background:#17231e;border:1px solid rgba(255,255,255,.06)}.sf-money-bar .left,.sf-money-bar .right{display:flex;align-items:center;color:#fff;font-size:.62rem;font-weight:950;padding:0 .33rem;min-width:0}.sf-money-bar .left{justify-content:flex-start;background:linear-gradient(90deg,#079a5a,#16c784)}.sf-money-bar .right{justify-content:flex-end;background:linear-gradient(90deg,#ef4d60,#f15b69)}.sf-money-labels{display:flex;justify-content:space-between;gap:.35rem;color:#9db3a7;font-size:.58rem;margin-top:.3rem}.sf-ticket-line{color:#789486;font-size:.56rem;margin-top:.32rem;line-height:1.35}.sf-ticket-line b{color:#adc5b8}
+@media(max-width:900px){.sf-money-grid{grid-template-columns:1fr}}
 </style>
 """
 
@@ -198,28 +200,19 @@ def _line_team(team: str, line: object) -> str:
     return team if number is None else f"{team} {number:+.1f}"
 
 
-def _money_card(title: str, left_label: str, lm: object, lt: object, right_label: str, rm: object, rt: object) -> str:
-    left, right = _finite(lm), _finite(rm)
-    if left is None or right is None or abs(left + right - 100.0) > 3.0:
+def _money_card(title: str, left_label: str, left_money: object, left_tickets: object, right_label: str, right_money: object, right_tickets: object) -> str:
+    lm, rm = _finite(left_money), _finite(right_money)
+    if lm is None or rm is None or abs((lm + rm) - 100.0) > 3.0:
         return ""
-    total = left + right
-    if total <= 0:
-        return ""
-    left_width = max(0.0, min(100.0, 100.0 * left / total))
-    right_width = 100.0 - left_width
-    leader, leader_pct = (left_label, left) if left >= right else (right_label, right)
+    left_width = max(0.0, min(100.0, lm))
+    leader = left_label if lm >= rm else right_label
+    leader_pct = max(lm, rm)
     lead = f"Money heavily favors {leader}" if leader_pct >= 75 else (f"Money favors {leader}" if leader_pct >= 60 else f"Money leans {leader}")
-    left_t, right_t = _finite(lt), _finite(rt)
-    ticket = "Ticket split unavailable"
-    if left_t is not None and right_t is not None and left_t + right_t > 0 and abs(left_t + right_t - 100.0) <= 3.0:
-        ticket = f"Tickets: {left_label} {left_t:.0f}% · {right_label} {right_t:.0f}%"
-    meter = (
-        f'<div class="cbb-money-meter" aria-label="{escape(title)} handle share: {left:.0f}% versus {right:.0f}%">'
-        f'<span class="cbb-money-fill left" style="width:{left_width:.1f}%"></span>'
-        f'<span class="cbb-money-fill right" style="width:{right_width:.1f}%"></span>'
-        f'<span class="cbb-money-pct left">{left:.0f}%</span><span class="cbb-money-pct right">{right:.0f}%</span></div>'
-    )
-    return '<div class="cbb-money-card">' + f'<div class="cbb-money-title">{escape(title)}</div><div class="cbb-money-lead">{escape(lead)}</div>' + meter + f'<div class="cbb-money-labels"><span>{escape(left_label)}</span><span>{escape(right_label)}</span></div><div class="cbb-ticket-line">{escape(ticket)}</div></div>'
+    lt, rt = _finite(left_tickets), _finite(right_tickets)
+    ticket_text = "Ticket split unavailable"
+    if lt is not None and rt is not None and abs((lt + rt) - 100.0) <= 3.0:
+        ticket_text = f"Tickets: {left_label} {lt:.0f}% · {right_label} {rt:.0f}%"
+    return '<div class="sf-money-card">' + f'<div class="sf-money-title">{escape(title)}</div><div class="sf-money-lead">{escape(lead)}</div>' + f'<div class="sf-money-bar" aria-label="{escape(title)} money share"><span class="left" style="width:{left_width:.1f}%">{lm:.0f}%</span><span class="right" style="width:{100-left_width:.1f}%">{rm:.0f}%</span></div>' + f'<div class="sf-money-labels"><span>{escape(left_label)}</span><span>{escape(right_label)}</span></div>' + f'<div class="sf-ticket-line">{escape(ticket_text)}</div></div>'
 
 
 def premium_betting_splits_html(row: pd.Series) -> str:
@@ -239,8 +232,7 @@ def premium_betting_splits_html(row: pd.Series) -> str:
     source = str(row.get("_market_split_source_label") or "Owl Insight")
     if not cards:
         return '<div class="split-strip empty"><div class="split-strip-head"><span>BETTING SPLITS</span><em>No validated money split snapshot for this matchup</em></div></div>'
-    legend = '<div class="cbb-money-legend"><span><i class="green"></i>left/away or over</span><span><i class="red"></i>right/home or under</span></div>'
-    return f'<div class="cbb-money-shell"><div class="cbb-money-head"><strong>BETTING SPLITS · {escape(source.upper())}</strong><span>Money = handle share · tickets shown below</span></div><div class="cbb-money-grid">{"".join(cards)}</div>{legend}</div>'
+    return f'<div class="sf-money-shell"><div class="sf-money-head"><strong>BETTING SPLITS · {escape(source.upper())}</strong><span>Money = handle share</span></div><div class="sf-money-grid">{"".join(cards)}</div></div>'
 
 
 def _snapshot_value(row: pd.Series, *names: str) -> float | None:
