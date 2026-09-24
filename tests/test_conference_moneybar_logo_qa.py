@@ -72,14 +72,13 @@ def test_independents_never_become_a_false_conference_game():
     assert filter_conference_status(enriched, CONFERENCE_GAMES).empty
 
 
-def test_money_bar_uses_overlay_labels_for_extreme_splits():
+def test_money_bar_matches_cfb_handle_share_component():
     html = premium_ui_patch._money_card("SPREAD MONEY", "Away +7.0", 9, 35, "Home -7.0", 91, 65)
-    assert "cbb-money-meter" in html
-    assert 'style="width:9.0%"' in html
-    assert 'style="width:91.0%"' in html
-    assert '<span class="cbb-money-pct left">9%</span>' in html
-    assert '<span class="cbb-money-pct right">91%</span>' in html
-    assert '>9%</span><span class="right"' not in html
+    assert "sf-money-bar" in html
+    assert 'style="width:9.0%">9%</span>' in html
+    assert 'style="width:91.0%">91%</span>' in html
+    assert "Money heavily favors Home -7.0" in html
+    assert "Tickets: Away +7.0 35% · Home -7.0 65%" in html
 
 
 def test_logo_resolver_retries_transient_failure(monkeypatch):
