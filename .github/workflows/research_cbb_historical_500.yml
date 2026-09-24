@@ -97,7 +97,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -r "$MODEL_ROOT/requirements.txt"
+          python -m venv "$MODEL_ROOT/.venv"
+          "$MODEL_ROOT/.venv/bin/python3" -m pip install --disable-pip-version-check -r "$MODEL_ROOT/requirements.txt"
 
       - name: Configure ephemeral model credential file
         shell: bash
