@@ -430,41 +430,47 @@ def render_slates_by_date(board: pd.DataFrame, report) -> None:
     st.markdown('<div class="slate-filter-note">Filters change only what is displayed. They never alter V1.1.3B, rewrite a published forecast, or use sportsbook information as a model input.</div>', unsafe_allow_html=True)
 
     teams = sorted(set(board.get("Home Team", pd.Series(dtype=str)).astype(str)).union(set(board.get("Away Team", pd.Series(dtype=str)).astype(str))))
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        selected_teams = st.multiselect("Teams", teams, placeholder="All teams")
-    with c2:
-        ranking_mode = st.selectbox("AP ranking", RANK_FILTERS, help="Uses published AP rankings in the game-context data when available.")
-    with c3:
-        confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1)
-    with c4:
-        sort_by = st.selectbox("Sort games by", SORT_OPTIONS)
+    st.caption("Choose every filter you want, then press GO once to update the slate.")
+    with st.form("cbb_game_filters", clear_on_submit=False, border=False):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            selected_teams = st.multiselect("Teams", teams, placeholder="All teams")
+        with c2:
+            ranking_mode = st.selectbox("AP ranking", RANK_FILTERS, help="Uses published AP rankings in the game-context data when available.")
+        with c3:
+            confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1)
+        with c4:
+            sort_by = st.selectbox("Sort games by", SORT_OPTIONS)
 
-    c5, c6, c7, c8 = st.columns([1.15, 1, 1, 1.35])
-    with c5:
-        ml_enabled = st.toggle("Filter best ML price", value=False, help="Uses the best currently tracked sportsbook moneyline on the model's straight-up pick.")
-    with c6:
-        ml_min = st.number_input("ML from", value=-350, step=25, disabled=not ml_enabled)
-    with c7:
-        ml_max = st.number_input("ML to", value=500, step=25, disabled=not ml_enabled)
-    with c8:
-        market_mode = st.selectbox("Sportsbook availability", MARKET_FILTERS)
+        c5, c6, c7, c8 = st.columns([1.15, 1, 1, 1.35])
+        with c5:
+            ml_enabled = st.toggle("Filter best ML price", value=False, help="Uses the best currently tracked sportsbook moneyline on the model's straight-up pick.")
+        with c6:
+            ml_min = st.number_input("ML from", value=-350, step=25, help="Applied only when Filter best ML price is on.")
+        with c7:
+            ml_max = st.number_input("ML to", value=500, step=25, help="Applied only when Filter best ML price is on.")
+        with c8:
+            market_mode = st.selectbox("Sportsbook availability", MARKET_FILTERS)
 
-    with st.expander("More filters"):
-        a1, a2, a3 = st.columns(3)
-        with a1:
-            min_gap = st.slider("Minimum spread disagreement", 0.0, 15.0, 0.0, 0.5, help="Absolute difference between model fair spread and the current best spread for the model pick. Display-only research filter.")
-        with a2:
-            movement_mode = st.selectbox("Line movement", MOVE_FILTERS)
-        with a3:
-            min_quality = st.slider("Minimum data confidence", 0, 100, 0, 5)
-        b1, b2, b3 = st.columns(3)
-        with b1:
-            verified_only = st.toggle("Verified player status only", value=False)
-        with b2:
-            d1_only = st.toggle("Division I matchups only", value=False)
-        with b3:
-            venue_mode = st.selectbox("Venue", ["All venues", "Neutral court only", "Campus / scheduled site only"])
+        with st.expander("More filters"):
+            a1, a2, a3 = st.columns(3)
+            with a1:
+                min_gap = st.slider("Minimum spread disagreement", 0.0, 15.0, 0.0, 0.5, help="Absolute difference between model fair spread and the current best spread for the model pick. Display-only research filter.")
+            with a2:
+                movement_mode = st.selectbox("Line movement", MOVE_FILTERS)
+            with a3:
+                min_quality = st.slider("Minimum data confidence", 0, 100, 0, 5)
+            b1, b2, b3 = st.columns(3)
+            with b1:
+                verified_only = st.toggle("Verified player status only", value=False)
+            with b2:
+                d1_only = st.toggle("Division I matchups only", value=False)
+            with b3:
+                venue_mode = st.selectbox("Venue", ["All venues", "Neutral court only", "Campus / scheduled site only"])
+
+        go_col, _ = st.columns([1, 5])
+        with go_col:
+            st.form_submit_button("GO", type="primary", use_container_width=True)
 
     try:
         filtered = filter_board(

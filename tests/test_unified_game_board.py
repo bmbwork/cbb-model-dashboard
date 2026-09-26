@@ -17,8 +17,11 @@ def test_public_game_board_is_card_only_and_ranked_games_are_emphasized():
     board_section = app[start:end]
     assert 'st.segmented_control("Results view"' not in board_section
     assert "st.dataframe" not in board_section
+    assert 'with st.form("cbb_game_filters"' in board_section
     assert 'st.multiselect("Teams"' in board_section
     assert 'st.selectbox("AP ranking"' in board_section
     assert 'st.toggle("Filter best ML price"' in board_section
     assert 'st.slider("Minimum spread disagreement"' in board_section
+    assert 'st.form_submit_button("GO"' in board_section
+    assert "disabled=not ml_enabled" not in board_section
     assert '.ap-tag{display:inline-flex!important' in app
