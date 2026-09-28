@@ -264,9 +264,10 @@ def render_home(records: list[dict[str, Any]], store_error: str | None = None) -
     )
     home_html = (
         '<div class="home-grid">'
-        '<div class="home-card"><span>MODEL</span><strong>What should happen?</strong><p>V1.1.3B publishes the independent winner probability, projected score and fair spread before sportsbook information is attached.</p></div>'
-        '<div class="home-card"><span>MARKET</span><strong>What is priced now?</strong><p>Best tracked spread and moneyline, betting splits, opener, movement and close come from the downstream sportsbook layer.</p></div>'
-        '<div class="home-card"><span>DECISION INTELLIGENCE</span><strong>Where do they disagree?</strong><p>Compare the forecast with the market without feeding sportsbook information back into the model.</p></div>'
+        '<div class="home-card"><span>GAME BOARD</span><strong>Slate command center</strong><p>Winner probability, projected score, model spread, live sportsbook context and market disagreement in one premium card system.</p></div>'
+        '<div class="home-card"><span>MATCHUP INTELLIGENCE</span><strong>Deep game research</strong><p>Team profiles, pace, adjusted efficiency, uncertainty and the evidence behind the model pick.</p></div>'
+        '<div class="home-card"><span>PUBLIC MONEY</span><strong>Market context</strong><p>Validated betting populations, opening/current/closing prices and book agreement stay downstream from the frozen forecast.</p></div>'
+        '<div class="home-card"><span>PERFORMANCE</span><strong>Immutable evaluation</strong><p>Historical grading, calibration and owner publishing operations are kept separate from the customer-facing prediction layer.</p></div>'
         '</div>'
     )
     st.markdown(compact_html(home_html), unsafe_allow_html=True)
@@ -502,9 +503,37 @@ def render_slates_by_date(board: pd.DataFrame, report) -> None:
         st.info("No games match these filters. Widen the odds/ranking/confidence range or choose a different slate date.")
         return
 
+    board_view = st.segmented_control(
+        "Board view",
+        ["Cards", "Matchup Explorer", "Public Money", "Model Insights"],
+        default="Cards",
+        label_visibility="collapsed",
+        key="cbb_board_view",
+    )
     limit_choice = st.segmented_control("Cards shown", ["Top 10", "Top 25", "All"], default="Top 25", label_visibility="collapsed")
     limit = {"Top 10": 10, "Top 25": 25, "All": len(filtered)}.get(limit_choice, 25)
-    st.markdown(game_card_grid_html(filtered.head(limit)), unsafe_allow_html=True)
+    visible = filtered.head(limit)
+
+    if board_view == "Matchup Explorer":
+        st.markdown('<div class="sf-board-view-note">One matchup at a time: model card, team profiles, matchup battle, projected margin and sportsbook context.</div>', unsafe_allow_html=True)
+        render_matchup_explorer(visible)
+    elif board_view == "Public Money":
+        st.markdown('<div class="sf-board-view-note">Market populations remain downstream observations. They are displayed beside the frozen model, never blended into it.</div>', unsafe_allow_html=True)
+        cols = st.columns(2, gap="medium")
+        for i, (_, row) in enumerate(visible.iterrows()):
+            with cols[i % 2]:
+                st.markdown(game_card_html(row), unsafe_allow_html=True)
+                st.markdown(market_context_html(row), unsafe_allow_html=True)
+    elif board_view == "Model Insights":
+        st.markdown('<div class="sf-board-view-note">This view emphasizes the evidence behind the pick, matchup uncertainty and the conditions that could invalidate the model edge.</div>', unsafe_allow_html=True)
+        cols = st.columns(2, gap="medium")
+        for i, (_, row) in enumerate(visible.iterrows()):
+            with cols[i % 2]:
+                st.markdown(game_card_html(row), unsafe_allow_html=True)
+                st.markdown(evidence_html(row), unsafe_allow_html=True)
+    else:
+        st.markdown(game_card_grid_html(visible), unsafe_allow_html=True)
+
     if limit < len(filtered):
         st.caption(f"Showing {limit} of {len(filtered)} matching games. Choose All to render the full filtered slate.")
 
@@ -1327,11 +1356,12 @@ elif page == "Pro Picks":
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> PRO PICKS</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-subtitle">Official human selections published from Stat Factory · separate from the independent CBB forecast engine.</div>', unsafe_allow_html=True)
-    st.info("Analyst selections are an editorial layer. They may reference model output and sportsbook context, but they do not feed back into or alter the frozen CBB model forecast.")
+    st.markdown('<div class="sf-owner-band" style="border-left-color:#43E2CF;border-color:rgba(67,226,207,.22);background:rgba(67,226,207,.035);color:#9EF3E8">ANALYST LAYER · human editorial selections remain separate from the frozen CBB model</div>', unsafe_allow_html=True)
     render_stat_factory_analyst_picks("cbb", heading=False)
 elif page == "Performance Lab":
     render_performance_lab(records)
 elif page == "Admin Studio":
+    st.markdown('<div class="sf-owner-band">OWNER OPERATIONS · publishing and write controls are not model output</div>', unsafe_allow_html=True)
     render_admin_studio(store, access, records)
 else:
     archive_catalog = cached_archive_catalog(store) if store else records
