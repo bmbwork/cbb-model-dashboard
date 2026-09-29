@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from cbb_dashboard.stats_lab import _flatten_payload, _friendly_frame
+from scripts.refresh_cbb_stats_lab import division_one_conferences
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,3 +122,20 @@ def test_shooting_refresh_is_limited_to_division_one_conferences():
     assert "division_one_conferences" in worker
     assert "independent_teams" not in worker
     assert 'scopes: list[dict[str, str]] = [{"conference": c} for c in conferences]' in worker
+
+
+def test_conference_names_resolve_to_canonical_abbreviations():
+    teams = [
+        {"conference": "Mountain West"},
+        {"conference": "SEC"},
+        {"conference": None},
+    ]
+    catalog = [
+        {"name": "Mountain West Conference", "shortName": "Mountain West", "abbreviation": "MWC"},
+        {"name": "Southeastern Conference", "shortName": "SEC", "abbreviation": "SEC"},
+    ]
+    assert division_one_conferences(teams, catalog) == ["MWC", "SEC"]
+
+def test_refresh_fetches_conference_catalog_before_shooting():
+    worker = (ROOT / "scripts" / "refresh_cbb_stats_lab.py").read_text()
+    assert '"/conferences"' in worker
