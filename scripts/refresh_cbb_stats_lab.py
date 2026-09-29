@@ -195,18 +195,18 @@ def player_shooting_cache_rows(
     return rows
 
 
-def unique_scope_values(team_payload: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    conferences = sorted(
-        {str(row.get("conference") or "").strip() for row in team_payload if str(row.get("conference") or "").strip()}
-    )
-    independent_teams = sorted(
+def division_one_conferences(team_payload: list[dict[str, Any]]) -> list[str]:
+    # CBBD returns lower-division/non-D-I opponents with no recognized conference.
+    # Stats Lab keeps their core season rows available behind the D-I toggle, but
+    # shot-profile enrichment is intentionally limited to recognized D-I
+    # conferences to preserve API quota.
+    return sorted(
         {
-            str(row.get("team") or "").strip()
+            str(row.get("conference") or "").strip()
             for row in team_payload
-            if not str(row.get("conference") or "").strip() and str(row.get("team") or "").strip()
+            if str(row.get("conference") or "").strip()
         }
     )
-    return conferences, independent_teams
 
 
 def fetch_shooting_scopes(
@@ -217,12 +217,11 @@ def fetch_shooting_scopes(
     season_type: str,
     team_payload: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    conferences, independent_teams = unique_scope_values(team_payload)
+    conferences = division_one_conferences(team_payload)
     combined: dict[tuple[Any, ...], dict[str, Any]] = {}
     warnings: list[str] = []
 
     scopes: list[dict[str, str]] = [{"conference": c} for c in conferences]
-    scopes.extend({"team": team} for team in independent_teams)
 
     for scope in scopes:
         try:
