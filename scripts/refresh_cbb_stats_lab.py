@@ -31,8 +31,10 @@ class CbbdError(RuntimeError):
 
 def current_season(now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
-    # CBBD seasons are keyed to the fall start of the basketball season.
-    return now.year if now.month >= 7 else now.year - 1
+    # CBBD seasons are keyed to the fall start. Before November there is little
+    # or no current-season statistical sample, so keep Stats Lab on the latest
+    # completed season until regular-season games actually begin.
+    return now.year if now.month >= 11 else now.year - 1
 
 
 def fetch_json(
