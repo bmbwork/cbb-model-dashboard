@@ -195,18 +195,29 @@ def player_shooting_cache_rows(
     return rows
 
 
-def division_one_conferences(team_payload: list[dict[str, Any]]) -> list[str]:
-    # CBBD returns lower-division/non-D-I opponents with no recognized conference.
-    # Stats Lab keeps their core season rows available behind the D-I toggle, but
-    # shot-profile enrichment is intentionally limited to recognized D-I
-    # conferences to preserve API quota.
-    return sorted(
-        {
-            str(row.get("conference") or "").strip()
-            for row in team_payload
-            if str(row.get("conference") or "").strip()
-        }
-    )
+def division_one_conferences(
+    team_payload: list[dict[str, Any]],
+    conference_catalog: list[dict[str, Any]],
+) -> list[str]:
+    # Shooting endpoints require the conference abbreviation. The season feed
+    # can expose an abbreviation, full name, or short name depending on source
+    # normalization, so resolve all observed values against /conferences once.
+    aliases: dict[str, str] = {}
+    for item in conference_catalog:
+        abbreviation = str(item.get("abbreviation") or "").strip()
+        if not abbreviation:
+            continue
+        for field in ("abbreviation", "name", "shortName"):
+            value = str(item.get(field) or "").strip()
+            if value:
+                aliases[value.casefold()] = abbreviation
+
+    observed = {
+        str(row.get("conference") or "").strip()
+        for row in team_payload
+        if str(row.get("conference") or "").strip()
+    }
+    return sorted({aliases.get(value.casefold(), value) for value in observed})
 
 
 def fetch_shooting_scopes(
@@ -215,9 +226,8 @@ def fetch_shooting_scopes(
     path: str,
     season: int,
     season_type: str,
-    team_payload: list[dict[str, Any]],
+    conferences: list[str],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    conferences = division_one_conferences(team_payload)
     combined: dict[tuple[Any, ...], dict[str, Any]] = {}
     warnings: list[str] = []
 
@@ -297,13 +307,15 @@ def refresh(season: int, season_type: str, include_shooting: bool) -> dict[str, 
     }
 
     if include_shooting and team_payload:
+        conference_catalog = fetch_json(session, api_key, "/conferences", {})
+        shooting_conferences = division_one_conferences(team_payload, conference_catalog)
         team_shooting, team_warnings = fetch_shooting_scopes(
             session,
             api_key,
             "/stats/team/shooting/season",
             season,
             season_type,
-            team_payload,
+            shooting_conferences,
         )
         player_shooting, player_warnings = fetch_shooting_scopes(
             session,
@@ -311,7 +323,7 @@ def refresh(season: int, season_type: str, include_shooting: bool) -> dict[str, 
             "/stats/player/shooting/season",
             season,
             season_type,
-            team_payload,
+            shooting_conferences,
         )
         result["warnings"] = team_warnings + player_warnings
         result["team_shooting_rows"] = upsert_rows(
