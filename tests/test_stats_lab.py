@@ -40,7 +40,7 @@ def test_team_stats_lab_preserves_nested_team_and_opponent_fields():
     assert "Team" in frame.columns
     assert "Wins" in frame.columns
     assert "Team Stats · Points · Total" in frame.columns
-    assert "Team Stats · Four Factors · Effective Field Goal Pct" in frame.columns
+    assert "Team Stats · Four Factors · eFG%" in frame.columns
     assert "Opponent Stats · Points · Total" in frame.columns
     assert frame.loc[0, "Team"] == "Example"
 
