@@ -114,3 +114,10 @@ def test_stats_lab_defaults_to_division_one_but_can_expand():
     assert '"Division I only"' in source
     assert "value=True" in source
     assert 'conference_values.ne("")' in source
+
+
+def test_shooting_refresh_is_limited_to_division_one_conferences():
+    worker = (ROOT / "scripts" / "refresh_cbb_stats_lab.py").read_text()
+    assert "division_one_conferences" in worker
+    assert "independent_teams" not in worker
+    assert 'scopes: list[dict[str, str]] = [{"conference": c} for c in conferences]' in worker
