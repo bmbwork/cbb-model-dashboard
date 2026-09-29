@@ -1,11 +1,6 @@
 name: CBB Stats Lab Refresh
 
 on:
-  # Temporary one-shot smoke trigger; removed after this verified refresh starts.
-  push:
-    branches: [feature/cbb-stats-lab-v1]
-    paths:
-      - '.github/workflows/stats_lab_refresh.yml'
   workflow_dispatch:
     inputs:
       season:
