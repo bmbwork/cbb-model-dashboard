@@ -181,7 +181,7 @@ def _default_columns(frame: pd.DataFrame, mode: str) -> list[str]:
         preferred = [
             "Team", "Conference", "Games", "Wins", "Losses", "Pace",
             "Team Stats · Points · Total", "Team Stats · Rating",
-            "Team Stats · True Shooting", "Team Stats · Four Factors · Effective Field Goal Pct",
+            "Team Stats · True Shooting", "Team Stats · Four Factors · eFG%",
             "Team Stats · Four Factors · Turnover Ratio",
             "Team Stats · Four Factors · Offensive Rebound Pct",
             "Team Stats · Rebounds · Total", "Team Stats · Assists",
@@ -198,7 +198,7 @@ def _default_columns(frame: pd.DataFrame, mode: str) -> list[str]:
         preferred = [
             "Team", "Conference", "Tracked Shots", "Assisted %", "Free Throw Rate",
             "Dunks · Pct", "Layups · Pct", "Two Point Jumpers · Pct",
-            "Three Point Jumpers · Pct", "Attempts Breakdown · Three Rate",
+            "Three Point Jumpers · Pct", "Attempts Breakdown · Three Point Jumpers",
         ]
     else:
         preferred = [
