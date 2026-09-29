@@ -241,9 +241,18 @@ def _filter_frame(frame: pd.DataFrame, key_prefix: str, entity_col: str) -> pd.D
                 step=1,
                 key=f"{key_prefix}_min_games",
             )
+        d1_only = st.toggle(
+            "Division I only",
+            value=True,
+            key=f"{key_prefix}_d1_only",
+            help="CBBD's Division I teams carry a recognized conference. Turn this off to include tracked non-conference/lower-division opponents.",
+        )
         st.form_submit_button("GO", use_container_width=True)
 
     filtered = frame.copy()
+    if d1_only and "Conference" in filtered:
+        conference_values = filtered["Conference"].fillna("").astype(str).str.strip()
+        filtered = filtered[conference_values.ne("")]
     if selected_conferences and "Conference" in filtered:
         filtered = filtered[filtered["Conference"].isin(selected_conferences)]
     if selected_teams and "Team" in filtered:
@@ -402,7 +411,8 @@ def render_stats_lab(store: Any) -> None:
         st.caption(
             "Includes record, pace, shooting, Four Factors, possessions, rating, "
             "rebounding, turnovers, assists, steals, blocks, scoring splits and the "
-            "same opponent statistics for defensive context."
+            "same opponent statistics for defensive context. Division I is the default "
+            "view; the full CBBD tracked universe remains available."
         )
         _render_mode(
             store,
