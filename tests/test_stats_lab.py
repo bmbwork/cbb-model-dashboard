@@ -107,3 +107,10 @@ def test_refresh_worker_uses_team_and_player_stats_endpoints():
     assert '"/stats/player/shooting/season"' in worker
     assert "CBBD_API_KEY" in worker
     assert "SUPABASE_SERVICE_ROLE_KEY" in worker
+
+
+def test_stats_lab_defaults_to_division_one_but_can_expand():
+    source = (ROOT / "cbb_dashboard" / "stats_lab.py").read_text()
+    assert '"Division I only"' in source
+    assert "value=True" in source
+    assert 'conference_values.ne("")' in source
