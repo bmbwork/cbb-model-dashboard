@@ -4,23 +4,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_environmental_backdrop_is_local_original_and_responsive():
+def test_full_bleed_photo_backdrop_contract():
     theme = (ROOT / "cbb_dashboard/ui.py").read_text()
     assert "GLOBAL_CSS += BACKGROUND_ART_CSS" in theme
-    assert "arena illustration" in theme
-    assert "data:image/svg+xml" in theme
-    assert "background-attachment:fixed" in theme
-    assert "prefers-reduced-motion:reduce" in theme
-    assert "auto 100vh" in theme
-    assert "url(\"http" not in theme
+    assert "Full-bleed real sport photography" in theme
+    assert "images.pexels.com" in theme
+    assert "position:fixed" in theme
+    assert "inset:0" in theme
+    assert "background-size:cover,cover,cover" in theme
+    assert "pointer-events:none" in theme
+    assert "data:image/svg+xml" not in theme
 
 
-def test_visible_player_focus_and_glass_card_contract():
+def test_glass_surface_and_readability_contract():
     theme = (ROOT / "cbb_dashboard/ui.py").read_text()
     assert "PLAYER_FOCUS_CSS" in theme
-    assert 'data:image/svg+xml' in theme
-    assert 'position:fixed' in theme
-    assert 'right:1.5vw' in theme
-    assert 'rgba(30,13,16,.62)' in theme
-    assert 'backdrop-filter:blur(12px)' in theme
-    assert 'opacity:1!important' in theme
+    assert "rgba(30,13,16,.64)" in theme
+    assert "rgba(255,122,26,.22)" in theme
+    assert "backdrop-filter:blur(12px)" in theme
+    assert "opacity:1!important" in theme
+    assert '[data-testid="stSidebar"]' in theme
+    assert "z-index:3!important" in theme
