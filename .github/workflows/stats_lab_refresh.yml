@@ -1,13 +1,6 @@
 name: CBB Stats Lab Refresh
 
 on:
-  push:
-    branches: [feature/cbb-stats-lab-v1]
-    paths:
-      - 'scripts/refresh_cbb_stats_lab.py'
-      - 'cbb_dashboard/stats_lab.py'
-      - 'supabase/stats_lab_v1.sql'
-      - '.github/workflows/stats_lab_refresh.yml'
   workflow_dispatch:
     inputs:
       season:
@@ -53,17 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           args=()
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Branch smoke test uses the latest completed season so the endpoint
-            # is guaranteed to contain substantial team and player data.
-            args+=(--season 2025 --season-type regular)
-          else
-            if [ -n "${{ inputs.season || '' }}" ]; then
-              args+=(--season "${{ inputs.season }}")
-            fi
-            args+=(--season-type "${{ inputs.season_type || 'regular' }}")
-            if [ "${{ inputs.include_shooting || 'true' }}" != "true" ]; then
-              args+=(--no-shooting)
-            fi
+          if [ -n "${{ inputs.season || '' }}" ]; then
+            args+=(--season "${{ inputs.season }}")
+          fi
+          args+=(--season-type "${{ inputs.season_type || 'regular' }}")
+          if [ "${{ inputs.include_shooting || 'true' }}" != "true" ]; then
+            args+=(--no-shooting)
           fi
           python scripts/refresh_cbb_stats_lab.py "${args[@]}"
