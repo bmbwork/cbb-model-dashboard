@@ -524,45 +524,63 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--sf-gold)!important;
 GLOBAL_CSS += ASSET_REBUILD_CSS
 BACKGROUND_ART_CSS = r"""
 <style>
-/* Original lightweight arena illustration: no team marks, people, or licensed photography. */
+/* Full-bleed real sport photography modeled after the accepted NHL dashboard treatment. */
 [data-testid="stAppViewContainer"],.stApp{
-  background-image:
-    linear-gradient(180deg,rgba(7,3,4,.32),rgba(7,3,4,.54) 50%,rgba(7,3,4,.84)),
-    radial-gradient(850px 500px at 50% -4%,rgba(255,122,26,.11),transparent 68%),
-    url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201920%201080%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22bg%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%231c0b0c%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23070304%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2250%25%22%20cy%3D%228%25%22%20r%3D%2278%25%22%3E%3Cstop%20stop-color%3D%22%23ff7a1a%22%20stop-opacity%3D%22.24%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ff7a1a%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22court%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%234d2318%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%2324110d%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22b%22%3E%3CfeGaussianBlur%20stdDeviation%3D%2218%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%221920%22%20height%3D%221080%22%20fill%3D%22url(%23bg)%22%2F%3E%3Crect%20width%3D%221920%22%20height%3D%22760%22%20fill%3D%22url(%23g)%22%2F%3E%3Cg%20opacity%3D%22.24%22%20stroke%3D%22%23ff9b48%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M80%20260%20Q960%2040%201840%20260%22%2F%3E%3Cpath%20d%3D%22M30%20355%20Q960%20130%201890%20355%22%2F%3E%3Cpath%20d%3D%22M0%20455%20Q960%20230%201920%20455%22%2F%3E%3C%2Fg%3E%3Cg%20filter%3D%22url(%23b)%22%20opacity%3D%22.28%22%3E%3Cellipse%20cx%3D%22250%22%20cy%3D%22170%22%20rx%3D%22240%22%20ry%3D%2278%22%20fill%3D%22%23ff7a1a%22%2F%3E%3Cellipse%20cx%3D%221670%22%20cy%3D%22170%22%20rx%3D%22240%22%20ry%3D%2278%22%20fill%3D%22%23ff7a1a%22%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%22M250%201080%20L520%20590%20L1400%20590%20L1670%201080Z%22%20fill%3D%22url(%23court)%22%20opacity%3D%22.82%22%2F%3E%3Cg%20stroke%3D%22%23ffd6b8%22%20stroke-opacity%3D%22.16%22%20fill%3D%22none%22%20stroke-width%3D%224%22%3E%3Cpath%20d%3D%22M620%201080%20L760%20590%22%2F%3E%3Cpath%20d%3D%22M1300%201080%20L1160%20590%22%2F%3E%3Cpath%20d%3D%22M480%20820%20H1440%22%2F%3E%3Cellipse%20cx%3D%22960%22%20cy%3D%22860%22%20rx%3D%22165%22%20ry%3D%2295%22%2F%3E%3Cpath%20d%3D%22M960%20765%20V955%22%2F%3E%3Cpath%20d%3D%22M495%20675%20H615%20V760%20H475%22%2F%3E%3Cpath%20d%3D%22M1425%20675%20H1305%20V760%20H1445%22%2F%3E%3C%2Fg%3E%3Cg%20stroke%3D%22%23ffc07a%22%20stroke-width%3D%227%22%20opacity%3D%22.28%22%3E%3Cpath%20d%3D%22M500%20535%20V410%20H610%22%2F%3E%3Cpath%20d%3D%22M1420%20535%20V410%20H1310%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")!important;
-  background-size:cover,cover,cover!important;
-  background-position:center top!important;
-  background-repeat:no-repeat!important;
-  background-attachment:fixed!important;
+  min-height:100vh!important;
+  background:#13070a!important;
 }
-[data-testid="stSidebar"]{backdrop-filter:blur(10px)!important;background:linear-gradient(180deg,rgba(16,7,9,.94),rgba(6,3,4,.97))!important}
-@media(max-width:800px){[data-testid="stAppViewContainer"],.stApp{background-size:cover,cover,auto 100vh!important;background-position:center top,center top,50% top!important}}
-@media(prefers-reduced-motion:reduce){[data-testid="stAppViewContainer"],.stApp{background-attachment:scroll!important}}
+[data-testid="stAppViewContainer"]::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(20,5,7,.38) 0%,rgba(7,3,4,.82) 100%),
+    linear-gradient(90deg,rgba(0,0,0,.28) 0%,rgba(0,0,0,.10) 48%,rgba(0,0,0,.25) 100%),
+    url("https://images.pexels.com/photos/15729336/pexels-photo-15729336/free-photo-of-men-during-basketball-match.jpeg?auto=compress&dpr=1&h=1400&w=2400");
+  background-size:cover,cover,cover;
+  background-position:center,center,center 24%;
+  background-repeat:no-repeat;
+  filter:saturate(1.08) contrast(1.04);
+}
+.block-container{position:relative!important;z-index:1!important}
+[data-testid="stHeader"]{
+  position:relative!important;z-index:4!important;
+  background:linear-gradient(180deg,rgba(3,10,18,.78),rgba(3,10,18,.30))!important;
+  border-bottom:1px solid rgba(255,255,255,.08)!important;
+}
+[data-testid="stSidebar"]{
+  position:relative!important;z-index:3!important;
+  background:linear-gradient(180deg,rgba(22,7,10,.96),rgba(7,3,4,.99))!important;
+  border-right:1px solid rgba(255,255,255,.10)!important;
+  -webkit-backdrop-filter:blur(13px)!important;
+  backdrop-filter:blur(13px)!important;
+}
+@media(max-width:800px){
+  [data-testid="stAppViewContainer"]::before{
+    background-position:center,center,52% top;
+    filter:saturate(1.04) contrast(1.03) brightness(.92);
+  }
+}
 </style>
 """
 
 
 PLAYER_FOCUS_CSS = r"""
 <style>
-/* Visible original athlete illustration + glassier cards. Keeps text/numerics fully opaque. */
-[data-testid="stAppViewContainer"]::before{
-  content:"";position:fixed;pointer-events:none;z-index:0;right:1.5vw;top:54px;
-  width:min(36vw,540px);height:min(58vh,650px);
-  background:url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20620%20760%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22body%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23FFD2A7%22%20stop-opacity%3D%22.94%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23FF7A1A%22%20stop-opacity%3D%22.86%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23071019%22%20stop-opacity%3D%22.70%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22glow%22%3E%3CfeGaussianBlur%20stdDeviation%3D%227%22%20result%3D%22b%22%2F%3E%3CfeMerge%3E%3CfeMergeNode%20in%3D%22b%22%2F%3E%3CfeMergeNode%20in%3D%22SourceGraphic%22%2F%3E%3C%2FfeMerge%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20filter%3D%22url(%23glow)%22%3E%3Ccircle%20cx%3D%22487%22%20cy%3D%2280%22%20r%3D%2254%22%20fill%3D%22%23FF7A1A%22%20stroke%3D%22%23FFD2A7%22%20stroke-opacity%3D%22.72%22%20stroke-width%3D%226%22%2F%3E%3Cellipse%20cx%3D%22344%22%20cy%3D%22143%22%20rx%3D%2258%22%20ry%3D%2262%22%20fill%3D%22url(%23body)%22%2F%3E%3Cpath%20d%3D%22M296%20205%20Q348%20171%20408%20204%20L461%20456%20Q383%20499%20267%20445%20L238%20272Z%22%20fill%3D%22url(%23body)%22%2F%3E%3Cpath%20d%3D%22M305%20223%20Q258%20247%20229%20302%20L259%20337%20Q302%20305%20338%20270Z%22%20fill%3D%22url(%23body)%22%2F%3E%3Cpath%20d%3D%22M402%20220%20Q443%20179%20469%20116%20L503%20128%20Q493%20236%20436%20283Z%22%20fill%3D%22url(%23body)%22%2F%3E%3Cpath%20d%3D%22M289%20443%20L246%20700%20H333%20L365%20472%20L397%20700%20H488%20L441%20443Z%22%20fill%3D%22%2312111a%22%20stroke%3D%22%23FF7A1A%22%20stroke-opacity%3D%22.60%22%20stroke-width%3D%225%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") right top/contain no-repeat;
-  opacity:.88;filter:drop-shadow(0 16px 34px rgba(0,0,0,.38));
+/* Glass research surface over the full-bleed photo; text and numbers remain fully opaque. */
+.game-card,.metric-shell,.home-card,.team-profile-card,.compare-side,.evidence-box,.market-card,.profile-metric,[data-testid="stVerticalBlockBorderWrapper"],[data-testid="stForm"]{
+  background:rgba(30,13,16,.64)!important;
+  border-color:rgba(255,122,26,.22)!important;
+  -webkit-backdrop-filter:blur(12px) saturate(1.08)!important;
+  backdrop-filter:blur(12px) saturate(1.08)!important;
+  box-shadow:0 12px 30px rgba(0,0,0,.18)!important;
 }
-.block-container{position:relative;z-index:1}
-.game-card,.metric-shell,.home-card,.team-profile-card,.compare-side,.evidence-box,.market-card,.profile-metric,[data-testid="stVerticalBlockBorderWrapper"]{
-  background:rgba(30,13,16,.62)!important;
-  border-color:rgba(255,122,26,.20)!important;
-  -webkit-backdrop-filter:blur(12px) saturate(1.08);
-  backdrop-filter:blur(12px) saturate(1.08);
-}
-.status-value,.summary-value,.pick-prob,.model-prob,.projection-value,.metric-value,strong{
+.status-value,.summary-value,.pick-prob,.model-prob,.projection-value,.metric-value,
+.primary-stat strong,.card-stat strong,.sf-number,.display,.sf-display,strong{
   opacity:1!important;
 }
-@media(max-width:1100px){[data-testid="stAppViewContainer"]::before{width:390px;height:480px;right:-55px;top:74px;opacity:.72}}
-@media(max-width:800px){[data-testid="stAppViewContainer"]::before{width:250px;height:330px;right:-68px;top:84px;opacity:.48}}
 </style>
 """
 
