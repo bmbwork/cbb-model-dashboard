@@ -25,3 +25,13 @@ def test_glass_surface_and_readability_contract():
     assert "opacity:1!important" in theme
     assert '[data-testid="stSidebar"]' in theme
     assert "z-index:3!important" in theme
+
+
+def test_scroll_stability_disables_flicker_prone_compositing():
+    theme = (ROOT / "cbb_dashboard/ui.py").read_text()
+    assert "SCROLL_STABILITY_CSS" in theme
+    assert "Scroll stability: avoid GPU compositor flicker" in theme
+    assert "backdrop-filter:none!important" in theme
+    assert "transition:none!important" in theme
+    assert "will-change:auto!important" in theme
+    assert "background-attachment:scroll!important" in theme
