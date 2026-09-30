@@ -585,5 +585,42 @@ PLAYER_FOCUS_CSS = r"""
 """
 
 
+SCROLL_STABILITY_CSS = r"""
+<style>
+/* Scroll stability: avoid GPU compositor flicker from fixed imagery + blurred/transformed cards. */
+[data-testid="stAppViewContainer"],.stApp{
+  background-attachment:scroll!important;
+}
+[data-testid="stAppViewContainer"]::before{filter:none!important;will-change:auto!important;transform:none!important;}
+
+[data-testid="stAppViewContainer"] *,
+[data-testid="stSidebar"] *{
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+[data-testid="stAppViewContainer"] [class*="card"],
+[data-testid="stAppViewContainer"] [class*="shell"]{
+  will-change:auto!important;
+  backface-visibility:visible!important;
+}
+[data-testid="stAppViewContainer"] [class*="card"]{
+  transition:none!important;
+  transform:none!important;
+}
+[data-testid="stAppViewContainer"] [class*="card"]:hover{
+  transform:none!important;
+}
+.game-card,.player-card,.fight-card,.status-card,.summary-card,
+.metric-shell,.home-card,.team-profile-card,.compare-side,.evidence-box,
+.market-card,.market-pulse,.primary-stat,.component-card,.intel-shell,
+.outcome-card,.profile-shell,.quote-card,.prop-card,.history-card,
+[data-testid="stVerticalBlockBorderWrapper"],[data-testid="stForm"]{
+  background:rgba(30,13,16,.80)!important;
+}
+</style>
+"""
+
+
 GLOBAL_CSS += BACKGROUND_ART_CSS
 GLOBAL_CSS += PLAYER_FOCUS_CSS
+GLOBAL_CSS += SCROLL_STABILITY_CSS
