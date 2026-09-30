@@ -12,6 +12,28 @@ from cbb_dashboard.data import dataframe_records
 from cbb_dashboard.performance import slate_grade_metrics
 
 
+TERMINAL_NON_GRADED = {"canceled", "cancelled"}
+
+
+def _bool_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series(False, index=frame.index, dtype=bool)
+    values = frame[column]
+    if values.dtype == bool:
+        return values.fillna(False).astype(bool)
+    return values.map(lambda v: str(v).strip().lower() in {"true","1","yes","y"}).fillna(False).astype(bool)
+
+
+def _grading_is_settled(previous: pd.DataFrame, expected_rows: int) -> bool:
+    if previous is None or previous.empty or expected_rows <= 0 or len(previous) != expected_rows:
+        return False
+    eligible = _bool_series(previous, "Grade Eligible")
+    if int(eligible.sum()) == expected_rows:
+        return True
+    status = previous.get("Status", pd.Series("", index=previous.index)).fillna("").astype(str).str.strip().str.lower()
+    return bool((eligible | status.isin(TERMINAL_NON_GRADED)).all())
+
+
 def main():
     parser=argparse.ArgumentParser(); parser.add_argument('--apply', action='store_true'); parser.add_argument('--lookback-days',type=int,default=14); args=parser.parse_args()
     if not 1 <= args.lookback_days <= 90: parser.error('lookback-days must be between 1 and 90')
@@ -25,13 +47,17 @@ def main():
         records.extend(batch)
         if len(batch)<200: break
         start+=200
-    score_cache={}; changed=0; final_rows=0
+    score_cache={}; changed=0; final_rows=0; settled_skips=0
     for item in records:
         record=item['record']; day=str(item['slate_date']); board=pd.DataFrame(record['board_json'])
         starts=pd.to_datetime(board.get('Start Time UTC'),utc=True,errors='coerce')
         if starts is not None and starts.notna().any() and starts.min()>pd.Timestamp.now(tz='UTC'): continue
+        previous=pd.DataFrame(record.get('grading_json') or [])
+        if _grading_is_settled(previous, len(board)):
+            settled_skips+=1
+            continue
         if day not in score_cache: score_cache[day]=fetch_scores(day,os.environ.get('CBBD_API_KEY',''))
-        graded=grade_frozen_board(board,score_cache[day],pd.DataFrame(record.get('grading_json') or []))
+        graded=grade_frozen_board(board,score_cache[day],previous)
         rows=dataframe_records(graded); count=int(graded['Grade Eligible'].sum()); final_rows+=count
         if count==0: continue
         digest=hashlib.sha256(json.dumps(rows,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -47,6 +73,6 @@ def main():
             if len(verified)!=1 or verified[0]['record'].get('grading_sha256')!=digest:
                 raise RuntimeError('CBB grading readback did not match')
         changed+=1
-    print(json.dumps({'apply':args.apply,'revisions_scanned':len(records),'changed_revisions':changed,'final_rows':final_rows}))
+    print(json.dumps({'apply':args.apply,'revisions_scanned':len(records),'settled_revisions_skipped':settled_skips,'provider_dates_requested':len(score_cache),'changed_revisions':changed,'final_rows':final_rows}))
 
 if __name__=='__main__': main()
