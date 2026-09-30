@@ -22,7 +22,14 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: '23 */6 * * *'
+    # Season/team/player statistics are not a live-score feed. One overnight
+    # refresh is enough for a current research surface and avoids wasting the
+    # shared CFBD/CBBD quota on unchanged shooting profiles.
+    - cron: '23 10 * * *'
+
+concurrency:
+  group: cbb-stats-lab-refresh
+  cancel-in-progress: false
 
 jobs:
   refresh:
