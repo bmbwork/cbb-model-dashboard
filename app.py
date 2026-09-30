@@ -76,6 +76,7 @@ from cbb_dashboard.storage import (
 )
 from cbb_dashboard.ui import GLOBAL_CSS, esc, fmt_num, fmt_pct, fmt_spread
 from stat_factory_analyst_picks import render_stat_factory_analyst_picks
+from cbb_dashboard.stats_lab import render_stats_lab
 
 # Import-compatibility guard for rolling Streamlit deploys. v1.4.3 introduced
 # market_interpretation_text in cbb_dashboard.intelligence. If Streamlit briefly
@@ -90,7 +91,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 BRAND = "CBB MODEL"
-APP_VERSION = "1.6.4"
+APP_VERSION = "1.7.0"
 
 st.set_page_config(
     page_title="CBB Model | Betting Intelligence",
@@ -1326,7 +1327,7 @@ if store is not None:
 with st.sidebar:
     st.markdown('<div class="cbb-kicker">CBB MODEL</div>', unsafe_allow_html=True)
     st.caption("Stat Factory · College Basketball")
-    public_pages = ["Home", "Game Board", "Pro Picks", "Performance Lab"]
+    public_pages = ["Home", "Game Board", "Stats Lab", "Pro Picks", "Performance Lab"]
     pages = public_pages + (["Admin Studio"] if access.authorized else [])
     page = st.radio("Navigate", pages, label_visibility="collapsed")
 
@@ -1352,6 +1353,8 @@ with st.sidebar:
 
 if page == "Home":
     render_home(records, store_error)
+elif page == "Stats Lab":
+    render_stats_lab(store)
 elif page == "Pro Picks":
     st.markdown('<div class="cbb-kicker">COLLEGE BASKETBALL INTELLIGENCE</div>', unsafe_allow_html=True)
     st.markdown('<div class="cbb-title">CBB MODEL <span style="color:#fbbf24">//</span> PRO PICKS</div>', unsafe_allow_html=True)
