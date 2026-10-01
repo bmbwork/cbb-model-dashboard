@@ -615,7 +615,7 @@ SCROLL_STABILITY_CSS = r"""
 .market-card,.market-pulse,.primary-stat,.component-card,.intel-shell,
 .outcome-card,.profile-shell,.quote-card,.prop-card,.history-card,
 [data-testid="stVerticalBlockBorderWrapper"],[data-testid="stForm"]{
-  background:rgba(30,13,16,.80)!important;
+  background:rgba(30,13,16,.90)!important;
 }
 </style>
 """
