@@ -35,3 +35,9 @@ def test_scroll_stability_disables_flicker_prone_compositing():
     assert "transition:none!important" in theme
     assert "will-change:auto!important" in theme
     assert "background-attachment:scroll!important" in theme
+
+
+def test_cards_are_more_opaque_than_background_art():
+    theme = (ROOT / "cbb_dashboard/ui.py").read_text()
+    assert "rgba(30,13,16,.90)" in theme
+    assert "backdrop-filter:none!important" in theme
