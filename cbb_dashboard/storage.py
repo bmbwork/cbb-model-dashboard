@@ -35,6 +35,24 @@ def sha256_frame(frame: pd.DataFrame) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def is_private_supabase_key(value: str) -> bool:
+    """Accept only modern server secret keys or legacy service_role JWTs."""
+    key = str(value or "").strip()
+    if key.startswith("sb_secret_") and len(key) > len("sb_secret_"):
+        return True
+    try:
+        import base64
+        import json
+        parts = key.split(".")
+        if len(parts) != 3:
+            return False
+        payload = json.loads(base64.urlsafe_b64decode(parts[1] + "==="))
+        return isinstance(payload, dict) and payload.get("role") == "service_role"
+    except (ValueError, TypeError, KeyError, UnicodeError):
+        return False
+
+
+
 class SupabaseSlateStore:
     TABLE = "cbb_slates"
     MARKET_TABLE = "cbb_market_snapshots"
@@ -54,7 +72,7 @@ class SupabaseSlateStore:
         # constructor default for offline tests/tools, never for paid app.py.
         if private_reader:
             key = str(config.secret_key or "").strip()
-            if not key or key.startswith("sb_publishable_"):
+            if not is_private_supabase_key(key):
                 raise StorageConfigurationError("CBB subscriber reader requires server-only Supabase credentials.")
         else:
             key = config.publishable_key
