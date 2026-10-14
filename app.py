@@ -58,6 +58,21 @@ from cbb_dashboard.market import (
     normalize_market_import,
     snapshots_frame,
 )
+
+# Streamlit Cloud can sync source into an already-imported Python worker.
+# Import market from disk and rebind the complete public market API together;
+# stale exception classes must not differ from new functions after a rerun.
+import importlib as _sf_market_importlib
+import cbb_dashboard.market as _sf_cbb_market
+_sf_cbb_market = _sf_market_importlib.reload(_sf_cbb_market)
+for _sf_name in (
+    "MarketDataError", "attach_market_to_board", "context_flags",
+    "context_frame", "context_records", "market_features", "market_records",
+    "market_research_frame", "normalize_context_import",
+    "normalize_market_import", "snapshots_frame",
+):
+    globals()[_sf_name] = getattr(_sf_cbb_market, _sf_name)
+
 from cbb_dashboard.owlsinsight_odds_provider import OwlsInsightOddsConfig, OwlsInsightOddsProvider
 from cbb_dashboard.owlsinsight_provider import OwlsInsightConfig, OwlsInsightSplitsProvider, annotate_sharp_money_signals, derive_public_betting_notes
 from cbb_dashboard.public_consensus import attach_aggregated_consensus
