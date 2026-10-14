@@ -394,7 +394,9 @@ def _role_row(group: pd.DataFrame, role: str) -> pd.Series | None:
     hit = group[group["Snapshot Role"].astype(str).str.lower().eq(role)]
     if hit.empty:
         return None
-    return hit.sort_values("Snapshot Time UTC").iloc[-1]
+    # Opening is immutable for the game, not a marker reset by a new model
+    # publication. Decision and close intentionally select their latest phase.
+    return hit.sort_values("Snapshot Time UTC").iloc[0 if role == "open" else -1]
 
 
 def _decision_row(group: pd.DataFrame, model_time: pd.Timestamp | None, start: pd.Timestamp | None) -> pd.Series | None:
@@ -465,7 +467,8 @@ def summarize_game_market(row: pd.Series, snapshots: pd.DataFrame) -> GameMarket
 
     decision = _decision_row(spread, model_time, start) if not spread.empty else None
     closing = _closing_row(spread, start) if not spread.empty else None
-    open_explicit = _role_row(spread, "open") if not spread.empty else None
+    # A post-tip update may not retroactively create a tracked market opener.
+    open_explicit = _role_row(spread_display, "open") if not spread_display.empty else None
     first_line = None
     if not spread_display.empty:
         line_candidates = spread_display[pd.to_numeric(spread_display.get("Home Line"), errors="coerce").notna()].copy()
