@@ -58,6 +58,15 @@ from cbb_dashboard.market import (
     normalize_market_import,
     snapshots_frame,
 )
+
+# Streamlit Cloud can sync updated market source into an already-imported
+# Python worker. Rebind this function from the actual deployed module on every
+# rerun, so old game opening calculations cannot persist after the fix.
+import importlib as _sf_market_importlib
+import cbb_dashboard.market as _sf_cbb_market
+_sf_cbb_market = _sf_market_importlib.reload(_sf_cbb_market)
+attach_market_to_board = _sf_cbb_market.attach_market_to_board
+
 from cbb_dashboard.owlsinsight_odds_provider import OwlsInsightOddsConfig, OwlsInsightOddsProvider
 from cbb_dashboard.owlsinsight_provider import OwlsInsightConfig, OwlsInsightSplitsProvider, annotate_sharp_money_signals, derive_public_betting_notes
 from cbb_dashboard.public_consensus import attach_aggregated_consensus
