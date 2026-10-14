@@ -43,14 +43,23 @@ class SupabaseSlateStore:
     BEST_ODDS_ARCHIVE_TABLE = "cbb_owls_best_odds_archive"
     BEST_ODDS_CARD_VIEW = "cbb_owls_best_odds_card_state"
 
-    def __init__(self, config: StoreConfig):
+    def __init__(self, config: StoreConfig, *, private_reader: bool = False):
         self.config = config
         try:
             from supabase import create_client
         except Exception as exc:
             raise StorageConfigurationError("The `supabase` Python package is not installed.") from exc
+        # Streamlit is server-rendered and parent-entitlement-gated. Its premium
+        # reader MUST use a private child-project credential. Preserve the old
+        # constructor default for offline tests/tools, never for paid app.py.
+        if private_reader:
+            key = str(config.secret_key or "").strip()
+            if not key or key.startswith("sb_publishable_"):
+                raise StorageConfigurationError("CBB subscriber reader requires server-only Supabase credentials.")
+        else:
+            key = config.publishable_key
         self._create_client = create_client
-        self._public = create_client(config.url, config.publishable_key)
+        self._public = create_client(config.url, key)
         self._admin = None
 
     def list_catalog(self):
