@@ -177,7 +177,7 @@ def make_store() -> tuple[SupabaseSlateStore | None, str | None]:
     if not url or not publishable:
         return None, "Persistent storage is not configured."
     try:
-        return SupabaseSlateStore(StoreConfig(url, publishable, server_key)), None
+        return SupabaseSlateStore(StoreConfig(url, publishable, server_key), private_reader=True), None
     except Exception as exc:
         return None, f"Persistent storage could not initialize: {type(exc).__name__}"
 
