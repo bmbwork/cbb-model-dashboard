@@ -45,7 +45,7 @@ def test_cloud_grading_key_trims_outer_whitespace_only():
             assert timeout == 30
             return Response()
 
-    assert fetch_scores("2026-11-02", "  cbbd_example_token\\n", session=Session()) == {"12": (80, 70)}
+    assert fetch_scores("2026-11-02", "  cbbd_example_token" + chr(10), session=Session()) == {"12": (80, 70)}
 
 
 def test_cloud_grading_key_rejects_embedded_controls_before_http():
@@ -56,4 +56,4 @@ def test_cloud_grading_key_rejects_embedded_controls_before_http():
             raise AssertionError("Invalid key must never reach HTTP")
 
     with pytest.raises(RuntimeError, match="invalid embedded character"):
-        fetch_scores("2026-11-02", "partial\\nsecret", session=NoNetwork())
+        fetch_scores("2026-11-02", "partial" + chr(10) + "secret", session=NoNetwork())
