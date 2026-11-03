@@ -224,15 +224,7 @@ def market_records(frame: pd.DataFrame, actor: str = "") -> list[dict[str, Any]]
             "raw_snapshot_hash": str(row["Raw Snapshot Hash"]),
             "published_by": actor or None,
         }
-        # Live cbb_market_snapshots has the market-terminal columns only.
-        # Sharp/ticket attribution fields live in private owner archives and
-        # must not be projected into the generic market snapshot upsert.
-        private_only = {
-            "ticket_leader", "money_leader", "sharp_side", "sharp_gap_pts",
-            "sharp_strength", "sharp_signal", "sharp_read",
-            "sharp_rule_version", "capture_trigger",
-        }
-        records.append({key: value for key, value in record.items() if key not in private_only})
+        records.append(record)
     return records
 
 
