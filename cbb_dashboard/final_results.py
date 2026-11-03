@@ -36,8 +36,14 @@ def final_scores(payload):
 
 
 def fetch_scores(day: str, key: str, session=requests):
+    # GitHub Actions secrets can acquire trailing newline/whitespace on paste.
+    # Strip only the boundary; never log the key or silently repair an embedded
+    # control character. The final-score provider remains independent of model.
+    key = str(key or '').strip()
     if not key:
         raise RuntimeError('CBBD_API_KEY is required for final scores')
+    if any(ord(c) < 33 or ord(c) == 127 for c in key):
+        raise RuntimeError('CBBD_API_KEY contains an invalid embedded character')
     d = date.fromisoformat(day)
     tz = ZoneInfo('America/Chicago')
     start = datetime.combine(d, time.min, tzinfo=tz)
