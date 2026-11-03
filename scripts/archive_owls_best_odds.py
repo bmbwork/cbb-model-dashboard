@@ -137,9 +137,15 @@ def finalize_missed_closes(existing: list[dict[str, Any]], now: pd.Timestamp) ->
 def upsert(client: Any, records: list[dict[str, Any]]) -> int:
     if not records:
         return 0
-    response = client.table(TABLE).upsert(records, on_conflict="raw_snapshot_hash").execute()
-    data = rows(response)
-    return len(data) if data else len(records)
+    # The archived multi-book quote payload can be large on opening slates.
+    # Keep individual writes below the size that broke CBB board HTTP/2 writes.
+    stored = 0
+    for offset in range(0, len(records), 20):
+        batch = records[offset:offset + 20]
+        response = client.table(TABLE).upsert(batch, on_conflict="raw_snapshot_hash").execute()
+        data = rows(response)
+        stored += len(data) if data else len(batch)
+    return stored
 
 
 def provider_event_key(event: dict[str, Any]) -> str:
@@ -331,6 +337,11 @@ def main() -> int:
         raise RuntimeError(
             "Upcoming published CBB board has no paired Owls quotes; "
             "check provider coverage, event mapping, authorization and rate limits."
+        )
+    if paired["future_board_games"] and not written:
+        raise RuntimeError(
+            "Upcoming CBB board has zero Owls archive rows; mobile sportsbook cards "
+            "will be empty even when Streamlit market snapshots exist."
         )
     print(
         f"Owls best-odds archive complete: mode={args.mode} provider_events={len(events)} "
