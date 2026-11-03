@@ -52,11 +52,13 @@ def main():
                       'reason': 'upcoming_published_slate' if active else 'no_upcoming_published_slate',
                       'provider_key_configured': key_shape != 'missing',
                       'provider_key_format': key_shape}))
-    if active and key_shape != 'expected':
+    # A live request on 2026-11-02 authenticated successfully even though
+    # the diagnostic shape classifier returned "unexpected". This shape is
+    # informational, NOT a source of truth about credential validity.
+    # Let Owls decide whether a present key is valid; fail closed if absent.
+    if active and key_shape == 'missing':
         raise RuntimeError(
-            'Upcoming CBB slate exists but GitHub Actions OWLS_INSIGHT_API_KEY '
-            f'has an unexpected credential format ({key_shape}); '
-            'the secret must be the raw Owls API key, not a Bearer header or quoted string.'
+            'Upcoming CBB slate exists but OWLS_INSIGHT_API_KEY is missing.'
         )
 
 
