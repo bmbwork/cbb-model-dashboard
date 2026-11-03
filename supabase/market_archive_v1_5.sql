@@ -47,8 +47,12 @@ create policy "CBB public reads best odds archive"
     to anon, authenticated
     using (true);
 
--- Writes are intentionally not granted to anon/authenticated. The scheduled
--- GitHub Action writes with the Supabase secret/service-role key.
+-- The scheduled GitHub Action writes through a server-side service-role key.
+-- Without explicit INSERT and UPDATE grants, PostgREST returns SQLSTATE 42501
+-- even though service_role can SELECT and bypasses row-level security.
+-- Do NOT grant writes to anon or authenticated.
+grant select, insert, update on table public.cbb_owls_best_odds_archive to service_role;
+
 
 -- Lightweight card-state view: retain full hourly history in the base table,
 -- but expose only open/current/close rows to Streamlit and scheduler state checks.
