@@ -28,3 +28,32 @@ def test_upcoming_board_arms_market_not_stale_historical_demo():
     assert not has_upcoming_board([{'slate_date':'2026-09-14','board_rows':0}],today)
     assert not has_upcoming_board([{'slate_date':'2026-11-01','board_rows':5}],today)
     assert not has_upcoming_board([],today)
+
+def test_cloud_grading_key_trims_outer_whitespace_only():
+    from cbb_dashboard.final_results import fetch_scores
+
+    class Response:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return [{"id": 12, "status": "Final", "homePoints": 80, "awayPoints": 70}]
+
+    class Session:
+        def get(self, url, *, params, headers, timeout):
+            assert url == "https://api.collegebasketballdata.com/games"
+            assert headers["Authorization"] == "Bearer cbbd_example_token"
+            assert timeout == 30
+            return Response()
+
+    assert fetch_scores("2026-11-02", "  cbbd_example_token\\n", session=Session()) == {"12": (80, 70)}
+
+
+def test_cloud_grading_key_rejects_embedded_controls_before_http():
+    from cbb_dashboard.final_results import fetch_scores
+
+    class NoNetwork:
+        def get(self, *args, **kwargs):
+            raise AssertionError("Invalid key must never reach HTTP")
+
+    with pytest.raises(RuntimeError, match="invalid embedded character"):
+        fetch_scores("2026-11-02", "partial\\nsecret", session=NoNetwork())
