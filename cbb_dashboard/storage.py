@@ -30,6 +30,16 @@ class StoreConfig:
     secret_key: str | None = None
 
 
+# Generic market snapshots and owner-only raw betting archives have different
+# schemas. Keep the raw diagnostics in the restricted owner archive; do not send
+# those attributes in cbb_market_snapshots writes.
+MARKET_SNAPSHOT_PRIVATE_FIELDS = frozenset({
+    "ticket_leader", "money_leader", "sharp_side", "sharp_gap_pts",
+    "sharp_strength", "sharp_signal", "sharp_read",
+    "sharp_rule_version", "capture_trigger",
+})
+
+
 def sha256_frame(frame: pd.DataFrame) -> str:
     payload = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
@@ -288,7 +298,7 @@ class SupabaseSlateStore:
         now = datetime.now(timezone.utc).isoformat()
         payload = []
         for record in records:
-            row = dict(record)
+            row = {k: v for k, v in record.items() if k not in MARKET_SNAPSHOT_PRIVATE_FIELDS}
             row.setdefault("created_at", now)
             row["updated_at"] = now
             payload.append(row)
