@@ -12,7 +12,7 @@ on:
     - cron: '17 * * * *'
   push:
     branches: [main]
-    paths: [.github/workflows/cbb_owls_best_odds_archive.yml, scripts/market_readiness.py]
+    paths: [.github/workflows/cbb_owls_best_odds_archive.yml, scripts/market_readiness.py, scripts/archive_owls_best_odds.py, cbb_dashboard/owlsinsight_odds_provider.py, cbb_dashboard/market.py, cbb_dashboard/storage.py]
 permissions:
   contents: read
 concurrency:
