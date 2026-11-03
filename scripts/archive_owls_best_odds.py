@@ -163,6 +163,7 @@ def persist_published_board_market_snapshots(
     """
     from cbb_dashboard.data import normalize_board
     from cbb_dashboard.market import market_records
+    from cbb_dashboard.storage import MARKET_SNAPSHOT_PRIVATE_FIELDS
 
     today = now.tz_convert("America/Chicago").date()
     end = today + timedelta(days=14)
@@ -218,8 +219,10 @@ def persist_published_board_market_snapshots(
                 & (quote_times <= now + pd.Timedelta(minutes=2))
             )
             if valid.any():
+                raw_rows = market_records(parsed.loc[valid].copy(), "cbb-scheduled-owls-observed")
                 snapshot_records.extend(
-                    market_records(parsed.loc[valid].copy(), "cbb-scheduled-owls-observed")
+                    {k: v for k, v in record.items() if k not in MARKET_SNAPSHOT_PRIVATE_FIELDS}
+                    for record in raw_rows
                 )
 
     # Existing Supabase market publisher may exceed transport frame limits on
