@@ -129,7 +129,7 @@ class OwlsInsightOddsProvider:
             }
             if response.status_code == 401:
                 raise MarketDataError(
-                    "Owls Insight rejected the API key (401). Check OWLS_INSIGHT_API_KEY in Streamlit Secrets."
+                    "Owls Insight returned 401: credential missing, malformed, unknown or revoked. For GitHub Actions, verify the repository secret OWLS_INSIGHT_API_KEY; Streamlit Secrets do not configure GitHub runners."
                 )
             if response.status_code == 403:
                 raise MarketDataError(
