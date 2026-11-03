@@ -137,14 +137,115 @@ def finalize_missed_closes(existing: list[dict[str, Any]], now: pd.Timestamp) ->
 def upsert(client: Any, records: list[dict[str, Any]]) -> int:
     if not records:
         return 0
-    response = client.table(TABLE).upsert(records, on_conflict="raw_snapshot_hash").execute()
-    data = rows(response)
-    return len(data) if data else len(records)
+    # The archived multi-book quote payload can be large on opening slates.
+    # Keep individual writes below the size that broke CBB board HTTP/2 writes.
+    stored = 0
+    for offset in range(0, len(records), 20):
+        batch = records[offset:offset + 20]
+        response = client.table(TABLE).upsert(batch, on_conflict="raw_snapshot_hash").execute()
+        data = rows(response)
+        stored += len(data) if data else len(batch)
+    return stored
 
 
 def provider_event_key(event: dict[str, Any]) -> str:
     return archive_event_key(event.get("home_team"), event.get("away_team"), event.get("commence_time"))
 
+
+
+
+def persist_published_board_market_snapshots(
+    client: Any,
+    provider: OwlsInsightOddsProvider,
+    events: list[dict[str, Any]],
+    now: pd.Timestamp,
+    provider_timestamp: str,
+) -> dict[str, int]:
+    """Store paired, future-only Owls observations for the Streamlit market terminal.
+
+    Mobile reads the independent best-odds archive. Reuse the SAME provider
+    response for both destinations, rather than making a second paid API call.
+    Never infer a true opener, decision or closing snapshot from a poll.
+    """
+    from cbb_dashboard.data import normalize_board
+    from cbb_dashboard.market import market_records
+    from cbb_dashboard.storage import MARKET_SNAPSHOT_PRIVATE_FIELDS
+
+    today = now.tz_convert("America/Chicago").date()
+    end = today + timedelta(days=14)
+    response = (
+        client.table("cbb_slates")
+        .select("slate_date,board_json")
+        .gte("slate_date", today.isoformat())
+        .lte("slate_date", end.isoformat())
+        .order("slate_date")
+        .limit(15)
+        .execute()
+    )
+    board_games = 0
+    matched_games = 0
+    snapshot_records: list[dict[str, Any]] = []
+
+    for published in rows(response):
+        source = pd.DataFrame(published.get("board_json") or [])
+        if source.empty:
+            continue
+        board, _ = normalize_board(source)
+        starts = pd.to_datetime(board.get("Start Time UTC"), utc=True, errors="coerce")
+        eligible = board.loc[starts.notna() & (starts > now + pd.Timedelta(minutes=5))].copy()
+        board_games += len(eligible)
+        if eligible.empty:
+            continue
+
+        mapped = provider.map_board_games(eligible, events)
+        matched_games += len(mapped)
+        for match in mapped:
+            game_start = pd.to_datetime(
+                match["board_row"].get("Start Time UTC"), utc=True, errors="coerce"
+            )
+            if pd.isna(game_start) or game_start <= now + pd.Timedelta(minutes=5):
+                continue
+            parsed, _ = provider.parse_event(
+                match["event"],
+                match["board_row"],
+                swapped=bool(match["swapped"]),
+                snapshot_role="observed",
+                response_timestamp=provider_timestamp,
+            )
+            if parsed.empty:
+                continue
+            quote_times = pd.to_datetime(
+                parsed["Snapshot Time UTC"], utc=True, errors="coerce"
+            )
+            # A provider update timestamp must predate tipoff and cannot lie in
+            # the future relative to actual collection time.
+            valid = (
+                quote_times.notna()
+                & (quote_times < game_start)
+                & (quote_times <= now + pd.Timedelta(minutes=2))
+            )
+            if valid.any():
+                raw_rows = market_records(parsed.loc[valid].copy(), "cbb-scheduled-owls-observed")
+                snapshot_records.extend(
+                    {k: v for k, v in record.items() if k not in MARKET_SNAPSHOT_PRIVATE_FIELDS}
+                    for record in raw_rows
+                )
+
+    # Existing Supabase market publisher may exceed transport frame limits on
+    # large slates. Keep individual batches small and idempotent by raw hash.
+    stored = 0
+    for offset in range(0, len(snapshot_records), 20):
+        batch = snapshot_records[offset:offset + 20]
+        result = client.table("cbb_market_snapshots").upsert(
+            batch, on_conflict="raw_snapshot_hash"
+        ).execute()
+        stored += len(rows(result)) or len(batch)
+    return {
+        "future_board_games": board_games,
+        "matched_board_games": matched_games,
+        "snapshot_rows": len(snapshot_records),
+        "rows_written": stored,
+    }
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Archive best available Owls NCAAB ML/spread prices.")
@@ -192,7 +293,7 @@ def main() -> int:
         if wanted_keys is not None and key not in wanted_keys:
             continue
         market_roles = state.get(key, {}).get("market_roles", {})
-        initial_role = "open" if not state.get(key) else "observed"
+        initial_role = "observed"  # First tracked != verified sportsbook opening line.
         event_rows = extract_best_odds_records(
             event,
             captured_at=now,
@@ -219,6 +320,29 @@ def main() -> int:
             )
 
     written = upsert(client, inserts)
+    freshness = meta.get("freshness") if isinstance(meta.get("freshness"), dict) else {}
+    if freshness.get("stale") is True:
+        raise RuntimeError("Owls odds feed reports stale data; current market sync blocked.")
+    paired = persist_published_board_market_snapshots(
+        client, provider, events, now, str(response_timestamp or "")
+    )
+    print(
+        "Paired market capture: "
+        f"future_board_games={paired['future_board_games']} "
+        f"matched={paired['matched_board_games']} "
+        f"snapshots={paired['snapshot_rows']} "
+        f"written={paired['rows_written']}."
+    )
+    if paired["future_board_games"] and not paired["snapshot_rows"]:
+        raise RuntimeError(
+            "Upcoming published CBB board has no paired Owls quotes; "
+            "check provider coverage, event mapping, authorization and rate limits."
+        )
+    if paired["future_board_games"] and not written:
+        raise RuntimeError(
+            "Upcoming CBB board has zero Owls archive rows; mobile sportsbook cards "
+            "will be empty even when Streamlit market snapshots exist."
+        )
     print(
         f"Owls best-odds archive complete: mode={args.mode} provider_events={len(events)} "
         f"eligible_events={event_count} rows_written={written}."
