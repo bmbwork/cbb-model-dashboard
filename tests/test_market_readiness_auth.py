@@ -57,3 +57,12 @@ def test_nonstandard_present_key_is_advisory_not_fatal(monkeypatch, capsys):
     assert result["active"] is True
     assert result["provider_key_configured"] is True
     assert result["provider_key_format"] == "unexpected"
+
+def test_archive_migration_explicitly_grants_private_writes():
+    from pathlib import Path
+
+    setup = (Path(__file__).resolve().parents[1] / "supabase" / "market_archive_v1_5.sql").read_text().lower()
+    assert ("grant select, insert, update on table "
+            "public.cbb_owls_best_odds_archive to service_role;") in setup
+    assert "grant insert on table public.cbb_owls_best_odds_archive to anon" not in setup
+    assert "grant update on table public.cbb_owls_best_odds_archive to authenticated" not in setup
