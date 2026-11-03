@@ -118,9 +118,11 @@ def test_started_event_not_stored_as_pregame_quote():
     assert client.saved == []
 
 
-def test_generic_market_records_exclude_private_diagnostics():
+def test_generic_market_records_keep_raw_fields_for_owner_only_archives():
+    from cbb_dashboard.storage import MARKET_SNAPSHOT_PRIVATE_FIELDS
     provider = OwlsInsightOddsProvider(OwlsInsightOddsConfig(api_key="test"))
     snapshot, _ = provider.parse_event(event(), pd.Series(board()))
     saved = market_records(snapshot)
     assert saved
-    assert all("sharp_side" not in row and "capture_trigger" not in row for row in saved)
+    assert all("sharp_side" in row and "capture_trigger" in row for row in saved)
+    assert {"sharp_side", "capture_trigger"}.issubset(MARKET_SNAPSHOT_PRIVATE_FIELDS)
