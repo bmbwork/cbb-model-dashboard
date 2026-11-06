@@ -1,0 +1,63 @@
+name: CBB Stats Lab Refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'CBBD season (blank = current season)'
+        required: false
+        type: string
+      season_type:
+        description: 'Season type'
+        required: true
+        default: regular
+        type: choice
+        options:
+          - regular
+          - postseason
+          - preseason
+      include_shooting:
+        description: 'Refresh team/player shot-profile endpoints'
+        required: true
+        default: true
+        type: boolean
+  schedule:
+    # Season/team/player statistics are not a live-score feed. One overnight
+    # refresh is enough for a current research surface and avoids wasting the
+    # shared CFBD/CBBD quota on unchanged shooting profiles.
+    - cron: '23 10 * * *'
+
+concurrency:
+  group: cbb-stats-lab-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: .
+      CBBD_API_KEY: ${{ secrets.CBBD_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Compile Stats Lab worker
+        run: python -m py_compile scripts/refresh_cbb_stats_lab.py cbb_dashboard/stats_lab.py
+      - name: Refresh CBBD statistics
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${{ inputs.season || '' }}" ]; then
+            args+=(--season "${{ inputs.season }}")
+          fi
+          args+=(--season-type "${{ inputs.season_type || 'regular' }}")
+          if [ "${{ inputs.include_shooting || 'true' }}" != "true" ]; then
+            args+=(--no-shooting)
+          fi
+          python scripts/refresh_cbb_stats_lab.py "${args[@]}"

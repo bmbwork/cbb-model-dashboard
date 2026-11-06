@@ -4,8 +4,10 @@ from pathlib import Path
 def test_public_navigation_uses_shared_stat_factory_names():
     root = Path(__file__).resolve().parents[1]
     app = (root / "app.py").read_text(encoding="utf-8")
-    assert 'public_pages = ["Home", "Game Board", "Pro Picks", "Performance Lab"]' in app
+    assert 'public_pages = ["Home", "Game Board", "Stats Lab", "Pro Picks", "Performance Lab"]' in app
     assert 'if page == "Game Board"' in app
+    assert 'elif page == "Stats Lab"' in app
+    assert 'render_stats_lab(store)' in app
     assert 'elif page == "Pro Picks"' in app
 
 
