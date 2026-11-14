@@ -39,5 +39,6 @@ def test_scroll_stability_disables_flicker_prone_compositing():
 
 def test_cards_are_more_opaque_than_background_art():
     theme = (ROOT / "cbb_dashboard/ui.py").read_text()
-    assert "rgba(30,13,16,.90)" in theme
+    assert ".game-card{background:#1e0d10!important;opacity:1!important}" in theme
+    assert theme.index("GLOBAL_CSS += GAME_CARD_READABILITY_CSS") > theme.index("GLOBAL_CSS += SCROLL_STABILITY_CSS")
     assert "backdrop-filter:none!important" in theme

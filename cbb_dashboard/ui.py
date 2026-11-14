@@ -621,6 +621,15 @@ SCROLL_STABILITY_CSS = r"""
 """
 
 
+GAME_CARD_READABILITY_CSS = r"""
+<style>
+/* Opaque game surfaces keep the photo from competing with forecast values. */
+.game-card{background:#1e0d10!important;opacity:1!important}
+.cbb-logo-matchup{background:#211014!important}
+</style>
+"""
+
 GLOBAL_CSS += BACKGROUND_ART_CSS
 GLOBAL_CSS += PLAYER_FOCUS_CSS
 GLOBAL_CSS += SCROLL_STABILITY_CSS
+GLOBAL_CSS += GAME_CARD_READABILITY_CSS

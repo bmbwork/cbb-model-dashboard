@@ -1,10 +1,59 @@
 from __future__ import annotations
 
+import hashlib
+import importlib
+import sys
+import threading
+from pathlib import Path
+
+
+def _refresh_game_board_runtime():
+    """Load matching ordering, filters and CSS before binding retained exports."""
+    import stat_factory_board_order as board_order
+
+    lock = board_order.__dict__.setdefault("_sf_game_board_reload_lock", threading.RLock())
+    with lock:
+        root = Path(__file__).resolve().parent
+        digest = hashlib.sha256()
+        for name in ("stat_factory_board_order.py", "cbb_dashboard/board_filters.py", "cbb_dashboard/ui.py"):
+            digest.update(name.encode())
+            digest.update((root / name).read_bytes())
+        revision = digest.hexdigest()
+        filters = sys.modules.get("cbb_dashboard.board_filters")
+        if (getattr(board_order, "_sf_game_board_source_hash", None) != revision
+                or not callable(getattr(board_order, "sort_numeric_cards", None))
+                or not hasattr(filters, "SORT_HELP")):
+            importlib.invalidate_caches()
+            # The ordering module must refresh before importing the package:
+            # package initialization itself imports the board filter exports.
+            board_order = importlib.reload(board_order)
+            for name in ("cbb_dashboard.board_filters", "cbb_dashboard.ui"):
+                module = sys.modules.get(name)
+                if module is None:
+                    importlib.import_module(name)
+                else:
+                    importlib.reload(module)
+            from cbb_dashboard import ui
+            from cbb_dashboard.conference_filter_runtime import install_conference_filter_runtime
+            from cbb_dashboard.premium_ui_patch import PREMIUM_CSS
+            from cbb_dashboard.board_summary_runtime import SUMMARY_CSS
+
+            # Reloading the base modules must preserve the existing runtime
+            # conference filter and the premium/summary component styles.
+            install_conference_filter_runtime()
+            for css in (PREMIUM_CSS, SUMMARY_CSS):
+                if css not in ui.GLOBAL_CSS:
+                    ui.GLOBAL_CSS += css
+            board_order._sf_game_board_source_hash = revision
+    return board_order
+
+
+_game_board_runtime = _refresh_game_board_runtime()
+
 from stat_factory_board_order import next_slate_date
 from zoneinfo import ZoneInfo
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -16,7 +65,7 @@ from cbb_dashboard.board_filters import (
     MARKET_FILTERS,
     MOVE_FILTERS,
     RANK_FILTERS,
-    SORT_OPTIONS,
+    SORT_OPTIONS, SORT_HELP,
     enrich_filter_fields,
     filter_board,
 )
@@ -456,7 +505,7 @@ def render_slates_by_date(board: pd.DataFrame, report) -> None:
         with c3:
             confidence_floor = st.slider("Minimum model win chance", 50, 95, 50, 1)
         with c4:
-            sort_by = st.selectbox("Sort games by", SORT_OPTIONS)
+            sort_by = st.selectbox("Sort games by", SORT_OPTIONS, help=SORT_HELP)
 
         c5, c6, c7, c8 = st.columns([1.15, 1, 1, 1.35])
         with c5:

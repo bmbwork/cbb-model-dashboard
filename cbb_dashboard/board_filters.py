@@ -5,7 +5,12 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from stat_factory_board_order import SORT_TIME, SORT_TOSSUPS, SORT_FAVORITES, sort_cards
+from stat_factory_board_order import (
+    SORT_TIME, SORT_TOSSUPS, SORT_FAVORITES, SORT_HELP,
+    SORT_SPREAD_HIGH, SORT_SPREAD_LOW, SORT_TOTAL_HIGH, SORT_TOTAL_LOW,
+    SORT_FAIR_HIGH, SORT_FAIR_LOW, SUPERLATIVE_SORT_OPTIONS,
+    sort_cards, sort_numeric_cards,
+)
 
 RANK_FILTER_ALL = "All games"
 RANK_FILTER_ANY_TOP25 = "Any AP Top 25"
@@ -29,7 +34,7 @@ SORT_MODEL = SORT_FAVORITES
 SORT_AP = "AP ranking"
 SORT_ML = "Best ML price"
 SORT_GAP = "Spread disagreement"
-SORT_OPTIONS = [SORT_TIME, SORT_TOSSUPS, SORT_MODEL, SORT_AP, SORT_ML, SORT_GAP]
+SORT_OPTIONS = [SORT_TIME, SORT_TOSSUPS, SORT_MODEL, SORT_AP, SORT_ML, SORT_GAP, *SUPERLATIVE_SORT_OPTIONS]
 
 
 def _num(value: object) -> float:
@@ -215,7 +220,28 @@ def filter_board(
     elif venue_mode != "All venues":
         raise ValueError(f"Unsupported venue filter: {venue_mode}")
 
-    if sort_by in {SORT_MODEL, SORT_TOSSUPS, SORT_TIME}:
+    if sort_by in SUPERLATIVE_SORT_OPTIONS:
+        source, ascending = {
+            SORT_SPREAD_HIGH: ("Fair Spread", False),
+            SORT_SPREAD_LOW: ("Fair Spread", True),
+            SORT_TOTAL_HIGH: ("Projected Total", False),
+            SORT_TOTAL_LOW: ("Projected Total", True),
+            SORT_FAIR_HIGH: ("Fair Moneyline", False),
+            SORT_FAIR_LOW: ("Fair Moneyline", True),
+        }[sort_by]
+        metric = pd.to_numeric(out.get(source, pd.Series(np.nan, index=out.index)), errors="coerce")
+        if source == "Fair Spread":
+            metric = metric.abs()
+        elif source == "Projected Total":
+            metric = metric.where(metric >= 0)
+        else:
+            metric = metric.where(metric.abs() >= 100)
+        out = sort_numeric_cards(
+            out, metric, ascending=ascending,
+            time_column=("Start Time UTC" if "Start Time UTC" in out else "_start_dt"),
+            tie_columns=("Away Team", "Home Team", "Game ID"),
+        )
+    elif sort_by in {SORT_MODEL, SORT_TOSSUPS, SORT_TIME}:
         out = sort_cards(out, sort_by, time_column=("Start Time UTC" if "Start Time UTC" in out else "_start_dt"), probability_column=("_win_prob" if "_win_prob" in out else "Win Probability"))
     elif sort_by == SORT_AP:
         out = out.sort_values(["_filter_ap_rank", "_filter_best_ml"], ascending=[True, False], na_position="last")
