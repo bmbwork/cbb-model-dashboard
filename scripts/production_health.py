@@ -25,7 +25,7 @@ def main() -> int:
         return 0
 
     url=str(os.environ.get("SUPABASE_URL") or "").strip()
-    key=str(os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    key=str(os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SECRET_KEY") or "").strip()
     if not url or not key:
         raise RuntimeError("CBB production-health Supabase secrets are not configured")
     client=create_client(url,key)
