@@ -12,7 +12,7 @@ on:
     - cron: '17 * * * *'
   push:
     branches: [main]
-    paths: [.github/workflows/cbb_owls_best_odds_archive.yml, scripts/market_readiness.py, scripts/archive_owls_best_odds.py, cbb_dashboard/owlsinsight_odds_provider.py, cbb_dashboard/market.py, cbb_dashboard/storage.py]
+    paths: [.github/workflows/cbb_owls_best_odds_archive.yml, scripts/market_readiness.py, scripts/archive_owls_best_odds.py, cbb_dashboard/owlsinsight_odds_provider.py, cbb_dashboard/market.py, cbb_dashboard/storage.py, cbb_dashboard/split_collection.py, cbb_dashboard/owlsinsight_provider.py, scripts/collect_owls_splits.py]
 permissions:
   contents: read
 concurrency:
@@ -58,6 +58,19 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CAPTURE_MODE: ${{ inputs.mode || 'hourly' }}
         run: python scripts/archive_owls_best_odds.py --mode "$CAPTURE_MODE"
+      - name: Capture reported live splits into the private archive
+        if: always() && steps.readiness.outputs.active == 'true'
+        env:
+          OWLS_INSIGHT_API_KEY: ${{ secrets.OWLS_INSIGHT_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" = 'refs/heads/main' ]; then
+            python scripts/collect_owls_splits.py
+          else
+            python scripts/collect_owls_splits.py --dry-run
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

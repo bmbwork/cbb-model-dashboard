@@ -134,41 +134,65 @@ def attach_aggregated_consensus(public_client, board: pd.DataFrame, slate_date: 
         snap = g[g["refresh_run_id"].astype(str).eq(refresh)]
         if snap.empty:
             continue
-        out.at[idx,"_aggregate_public_available"] = True
         last = snap["observed_at"].max()
-        out.at[idx,"_aggregate_public_last_seen"] = None if pd.isna(last) else last.isoformat()
-        for _, r in snap.iterrows():
-            side = str(r.get("side") or "")
-            prefix = {"spread_away":"spread_away","spread_home":"spread_home","moneyline_away":"ml_away","moneyline_home":"ml_home","total_over":"total_over","total_under":"total_under"}.get(side)
-            if not prefix:
-                continue
-            out.at[idx,f"_aggregate_{prefix}_line"] = r.get("line")
-            out.at[idx,f"_aggregate_{prefix}_tickets"] = r.get("tickets_pct")
-            out.at[idx,f"_aggregate_{prefix}_money"] = r.get("handle_pct")
+        if pd.isna(last) or last > current + pd.Timedelta(minutes=5):continue
+        start=pd.to_datetime(game.get("_start_dt",game.get("Start Time UTC")),utc=True,errors="coerce")
+        if pd.notna(start) and last >= start:continue
+        valid=False
+        for kind,sides in (("spread",("spread_away","spread_home")),("moneyline",("moneyline_away","moneyline_home")),("total",("total_over","total_under"))):
+            group=snap[snap["market_type"].eq(kind)]
+            if len(group)!=2 or set(group["side"])!=set(sides):continue
+            group=group.set_index("side")
+            pair_valid={}
+            for field in ("tickets_pct","handle_pct"):
+                values=pd.to_numeric(group[field],errors="coerce")
+                pair_valid[field]=bool(values.between(0,100).all() and 99<=values.sum()<=101)
+            if not any(pair_valid.values()):continue
+            valid=True
+            for side,r in group.iterrows():
+                prefix={"spread_away":"spread_away","spread_home":"spread_home","moneyline_away":"ml_away","moneyline_home":"ml_home","total_over":"total_over","total_under":"total_under"}[side]
+                out.at[idx,f"_aggregate_{prefix}_line"]=r.get("line")
+                for field,suffix in (("tickets_pct","tickets"),("handle_pct","money")):
+                    out.at[idx,f"_aggregate_{prefix}_{suffix}"]=r.get(field) if pair_valid[field] else float("nan")
+        out.at[idx,"_aggregate_public_available"]=valid
+        out.at[idx,"_aggregate_public_last_seen"]=last.isoformat() if valid else None
     return out
 
 
+def split_snapshot_label(value, row: pd.Series, *, now: datetime | None = None) -> str:
+    stamp=pd.to_datetime(value,utc=True,errors="coerce")
+    if pd.isna(stamp):return "Capture time unavailable"
+    label=stamp.tz_convert("America/Chicago").strftime("%m/%d %-I:%M %p CT")
+    current=pd.Timestamp(now or datetime.now(timezone.utc))
+    if current.tzinfo is None:current=current.tz_localize("UTC")
+    start=pd.to_datetime(row.get("_start_dt",row.get("Start Time UTC")),utc=True,errors="coerce")
+    if pd.notna(start) and start<=current and stamp<start:return "Last pregame report · "+label
+    return ("Stale snapshot · " if current-stamp>CONSENSUS_STALE_AFTER else "Reported · ")+label
+
+
 def aggregate_public_books_html(row: pd.Series) -> str:
-    if not bool(row.get("_aggregate_public_available", False)):
-        return ""
-    away, home = str(row.get("Away Team") or "Away"), str(row.get("Home Team") or "Home")
-    def pct(v):
-        x = pd.to_numeric(v, errors="coerce")
-        return "—" if pd.isna(x) else f"{float(x):.0f}%"
-    def val(prefix):
-        return f"{pct(row.get(f'_aggregate_{prefix}_money'))} money · {pct(row.get(f'_aggregate_{prefix}_tickets'))} bets"
-    def line(prefix, total=False):
-        x = pd.to_numeric(row.get(f"_aggregate_{prefix}_line"), errors="coerce")
-        return "" if pd.isna(x) else (f" {float(x):.1f}" if total else f" {float(x):+.1f}")
-    seen = pd.to_datetime(row.get("_aggregate_public_last_seen"), utc=True, errors="coerce")
-    stamp = "" if pd.isna(seen) else seen.tz_convert("America/Chicago").strftime("%m/%d %-I:%M %p CT")
-    sections = [
-        ("SPREAD", f"{away}{line('spread_away')}", val("spread_away"), f"{home}{line('spread_home')}", val("spread_home")),
-        ("MONEYLINE", away, val("ml_away"), home, val("ml_home")),
-        ("TOTAL", f"Over{line('total_over', True)}", val("total_over"), f"Under{line('total_under', True)}", val("total_under")),
-    ]
-    body = "".join(f'<div class="aggregate-row"><span>{escape(title)}</span><div><b>{escape(a)}</b><em>{escape(av)}</em></div><div><b>{escape(b)}</b><em>{escape(bv)}</em></div></div>' for title,a,av,b,bv in sections)
-    return f'<details class="aggregate-public"><summary>Aggregated public books</summary><p>Consensus across multiple public books · {escape(stamp)}. Separate from Owl sportsbook-specific splits; populations are never averaged together.</p>{body}</details>'
+    if not bool(row.get("_aggregate_public_available", False)):return ""
+    from .premium_ui_patch import _money_card
+    away,home=str(row.get("Away Team") or "Away"),str(row.get("Home Team") or "Home")
+    def line(prefix,total=False):
+        value=pd.to_numeric(row.get(f"_aggregate_{prefix}_line"),errors="coerce")
+        return "" if pd.isna(value) else (f" {value:.1f}" if total else f" {value:+.1f}")
+    cards=[]
+    for title,left,right,lp,rp in (
+        ("SPREAD MONEY",away+line("spread_away"),home+line("spread_home"),"spread_away","spread_home"),
+        ("MONEYLINE MONEY",away,home,"ml_away","ml_home"),
+        ("TOTAL MONEY","Over"+line("total_over",True),"Under"+line("total_under",True),"total_over","total_under")):
+        money=lambda p:row.get(f"_aggregate_{p}_money")
+        tickets=lambda p:row.get(f"_aggregate_{p}_tickets")
+        card=_money_card(title,left,money(lp),tickets(lp),right,money(rp),tickets(rp))
+        if not card:
+            lt,rt=pd.to_numeric(tickets(lp),errors="coerce"),pd.to_numeric(tickets(rp),errors="coerce")
+            if pd.notna(lt) and pd.notna(rt) and 0<=lt<=100 and 0<=rt<=100 and 99<=lt+rt<=101:
+                card=f'<div class="sf-money-card"><div class="sf-money-title">{escape(title)}</div><p>Money not reported</p><p>Tickets: {escape(left)} {lt:.0f}% · {escape(right)} {rt:.0f}%</p></div>'
+        if card:cards.append(card)
+    if not cards:return ""
+    stamp=split_snapshot_label(row.get("_aggregate_public_last_seen"),row)
+    return f'<section class="aggregate-public sf-money-shell"><div class="sf-money-head"><strong>AGGREGATED PUBLIC BOOKS</strong><span>Money = handle share</span></div><p>Public consensus · {escape(stamp)}. Separate from Owl sportsbook splits; sources are never averaged together.</p><div class="sf-money-grid">{"".join(cards)}</div></section>'
 
 
 def _active_board(admin_client, now: datetime) -> pd.DataFrame:
@@ -203,6 +227,7 @@ def collect_public_consensus(admin_client, *, now: datetime | None = None) -> di
         parsed=parse_consensus_html(fetch_consensus_html(),known_teams=list(known))
         lookup={(_key(r["Away Team"]),_key(r["Home Team"])):r for _,r in board.iterrows()}
         source_pairs={(r["away_team"],r["home_team"]) for r in parsed}
+        if not parsed:raise RuntimeError("CBB consensus page returned no validated split markets for the active board")
         matched=[]; events=set()
         for row in parsed:
             game=lookup.get((_key(row["away_team"]),_key(row["home_team"])))

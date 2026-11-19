@@ -32,9 +32,11 @@ Deno.serve(async (req) => {
     if (!url) throw new Error("url unavailable");
     const db = createClient(url, secret(), { auth: { persistSession: false, autoRefreshToken: false } });
 
-    const [{ data: slate, error: slateError }, { data: snapshot, error: snapshotError }] = await Promise.all([
+    const [{ data: slate, error: slateError }, { data: snapshot, error: snapshotError }, splitResult, consensusResult] = await Promise.all([
       db.from("cbb_slates").select("slate_date,model_version,revision,board_rows,metrics_json,published_at,updated_at").order("published_at", { ascending: false }).limit(1).maybeSingle(),
       db.from("cbb_market_snapshots").select("snapshot_time_utc,provider,market_type,book_count,created_at,updated_at").order("snapshot_time_utc", { ascending: false }).limit(1).maybeSingle(),
+      db.from("cbb_split_refresh_runs").select("requested_at,completed_at,status,feed_state,requested_games,provider_events,mapped_games,split_games,rows_written,provider_observed_at,error_summary").order("requested_at",{ascending:false}).limit(1).maybeSingle(),
+      db.from("cbb_consensus_refresh_runs").select("requested_at,completed_at,status,requested_games,matched_events").order("requested_at",{ascending:false}).limit(1).maybeSingle(),
     ]);
     if (slateError || snapshotError) throw slateError || snapshotError;
 
@@ -51,7 +53,20 @@ Deno.serve(async (req) => {
     if (operatingState === "active" && slate && boardRows <= 0) incidents.push("published board has zero rows");
     if (marketExpected && oddsPopulating === false) incidents.push("market data is stale or absent for the active slate");
 
-    const workflowStatus = operatingState === "offseason" ? "idle" : incidents.length ? "incident" : "healthy";
+    const split = splitResult.data;
+    const consensus = consensusResult.data;
+    const splitAge = ageHours(split?.completed_at);
+    const consensusAge = ageHours(consensus?.completed_at);
+    const warnings: string[] = [];
+    if (marketExpected) {
+      if (splitResult.error || !split) warnings.push("Owl split collection has not been verified");
+      else if (split.status !== "completed") warnings.push(`Owl split collection ${split.status}`);
+      else if (splitAge === null || splitAge > 2) warnings.push("Owl split collection is delayed; displayed snapshots may be stale");
+      if (consensusResult.error || !consensus) warnings.push("Public consensus collection has not been verified");
+      else if (consensus.status !== "completed") warnings.push(`Public consensus collection ${consensus.status}`);
+      else if (consensusAge === null || consensusAge > 2) warnings.push("Public consensus collection is delayed; displayed snapshots may be stale");
+    }
+    const workflowStatus = operatingState === "offseason" ? "idle" : incidents.length ? "incident" : warnings.length ? "attention" : "healthy";
     return reply(200, {
       sport: "cbb",
       checked_at: new Date().toISOString(),
@@ -68,13 +83,15 @@ Deno.serve(async (req) => {
       model_outputs_ok: modelOk,
       latest_slate: slate ?? null,
       workflow_status: workflowStatus,
-      workflow_summary: incidents.join(", ") || (operatingState === "offseason" ? "College basketball is out of season; fresh model and market data are not expected." : null),
+      workflow_summary: [...incidents,...warnings].join(", ") || (operatingState === "offseason" ? "College basketball is out of season; fresh model and market data are not expected." : null),
       anomaly_status: incidents.length ? "incident" : "clear",
       anomaly_summary: incidents.length ? incidents.join(", ") : null,
       detail: {
         market_age_hours: marketAge,
         snapshot_present: Boolean(snapshot),
         market_source: "cbb_market_snapshots",
+        owl_splits: { last_poll: split?.completed_at ?? null, poll_age_hours: splitAge, status: split?.status ?? "unknown", availability: split?.feed_state ?? "unknown", reported_games: split?.split_games ?? 0, rows_written: split?.rows_written ?? 0, provider_observed_at: split?.provider_observed_at ?? null, error: split?.error_summary ?? null },
+        public_consensus: { last_poll: consensus?.completed_at ?? null, poll_age_hours: consensusAge, status: consensus?.status ?? "unknown", reported_games: consensus?.matched_events ?? 0 },
       },
     });
   } catch (error) {

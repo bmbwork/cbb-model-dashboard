@@ -112,7 +112,19 @@ def normalize_market_import(frame: pd.DataFrame) -> pd.DataFrame:
     for col in pct_cols:
         if col not in out.columns:
             out[col] = np.nan
-        out[col] = out[col].map(_pct)
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    # Detect fractions as a PAIR. Scaling each value separately turns a valid
+    # 1%/99% split into 100%/99%, and a second normalization corrupts it again.
+    for left,right in zip(pct_cols[::2],pct_cols[1::2]):
+        a,b = out[left],out[right]
+        paired = a.notna() & b.notna()
+        fractional = paired & a.between(0,1) & b.between(0,1) & (a+b).between(.99,1.01)
+        single_a = ~paired & a.between(0,1)
+        single_b = ~paired & b.between(0,1)
+        out[left] = a.where(~(fractional|single_a),a*100)
+        out[right] = b.where(~(fractional|single_b),b*100)
+        invalid = ~out[left].between(0,100) & out[left].notna() | ~out[right].between(0,100) & out[right].notna()
+        out.loc[invalid,[left,right]] = np.nan
 
     numeric_cols = [
         "Home Line", "Away Line", "Total Line", "Opening Home Line", "Opening Away Line",
