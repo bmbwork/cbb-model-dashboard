@@ -36,7 +36,7 @@ def _row(**updates) -> pd.Series:
 def test_primary_market_strip_uses_heating_cooling_language() -> None:
     heating = best_odds_html(_row())
     assert "Market heating on Home State" in heating
-    assert "Open -3.5" in heating
+    assert "First tracked -3.5" in heating
     assert "Current -4.5" in heating
     assert "BEST ML NOW" in heating
     assert "MODEL-IMPLIED ODDS" in heating

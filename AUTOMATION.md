@@ -112,3 +112,29 @@ STAT_FACTORY_HEADLESS_AUTOMATION=1 \
   "$HOME/Library/Application Support/StatFactory/CBB/dashboard_runtime/scripts/run_cbb_auto_grade.py" \
   --dry-run
 ```
+
+## Live split collection and card reliability (November 19, 2026)
+
+The hourly `cbb_owls_best_odds_archive.yml` workflow also runs
+`scripts/collect_owls_splits.py` for upcoming published games. This uses one
+current Owl split request across the eligible boards and writes only reported,
+validated pregame pairs to `cbb_owner_betting_splits`. The collector never
+writes forecasts, decision lines, open/close prices, or grading results.
+Manual runs on repair branches use `--dry-run` and do not write to Supabase.
+
+`cbb_split_refresh_runs` records counts, poll time, provider observation time,
+and sanitized failures. It is service-role-only, like the raw split archive.
+The health endpoint reports Owl and public-consensus status separately from
+odds; a failed or delayed collector produces attention even if odds are fresh.
+A successful poll with no provider coverage is explicitly `not_reported`.
+
+Each displayed bar keeps its money, tickets, source, line and timestamp from
+one split record. Public-consensus bars remain separate from sportsbook-specific
+Owl populations. Capture times and stale/last-pregame labels are visible. A
+missing handle share never becomes a ticket-based money bar. Per-market odds
+fallback can use another reporting sportsbook when the preferred book omits
+that market; every quote retains its actual source.
+
+First tracked odds are labelled as such, rather than claiming they are verified
+sportsbook openers. Market readers page through PostgREST results so its default
+per-response row cap cannot silently cut off a busy slate's later observations.

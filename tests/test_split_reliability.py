@@ -119,3 +119,20 @@ def test_market_readers_fetch_beyond_the_api_row_cap():
     result=store._paged_rows(Query,20000)
     assert len(result)==1251 and result[-1]['id']=='1250'
     assert calls==[(0,499),(500,999),(1000,1499)]
+
+def test_owl_ticket_only_report_is_not_labelled_as_money():
+    row=board().iloc[0].copy()
+    row['_market_home_ticket_pct']=30;row['_market_away_ticket_pct']=70
+    html=premium_betting_splits_html(row)
+    assert 'Tickets:' in html and 'Money not reported' in html and 'sf-money-bar' not in html
+
+
+def test_stale_and_future_consensus_snapshots_are_distinguished():
+    rows=consensus_rows();rows[0]['observed_at']=rows[1]['observed_at']='2026-11-19T10:00:00Z'
+    row=attach_aggregated_consensus(Client(rows),board(),'2026-11-19',now=NOW).iloc[0]
+    assert row['_aggregate_public_available']
+    from cbb_dashboard.public_consensus import split_snapshot_label
+    assert 'Stale snapshot' in split_snapshot_label(row['_aggregate_public_last_seen'],row,now=NOW)
+    for r in rows:r['observed_at']='2026-11-19T16:00:00Z'
+    row=attach_aggregated_consensus(Client(rows),board(),'2026-11-19',now=NOW).iloc[0]
+    assert not row['_aggregate_public_available']
