@@ -111,6 +111,17 @@ class SupabaseSlateStore:
         data = getattr(response, "data", None)
         return data if data is not None else []
 
+    def _paged_rows(self, make_query, limit: int) -> list[dict[str, Any]]:
+        # PostgREST caps individual responses (normally at 1,000), even when
+        # limit(20000) is requested. Read bounded pages with a stable ordering.
+        result=[]
+        while len(result)<limit:
+            take=min(500,limit-len(result))
+            batch=[dict(row) for row in self._data(make_query().range(len(result),len(result)+take-1).execute())]
+            result.extend(batch)
+            if len(batch)<take:break
+        return result
+
     def check_access(self, admin: bool = False) -> None:
         client = self._admin_client() if admin else self._public
         try:
@@ -160,16 +171,12 @@ class SupabaseSlateStore:
             "over_ticket_pct", "under_ticket_pct", "over_money_pct", "under_money_pct",
         ])
         try:
-            resp = (
-                client.table(self.OWNER_SPLITS_TABLE)
-                .select(columns)
-                .eq("slate_date", str(slate_date))
-                .order("snapshot_time_utc", desc=True)
-                .limit(int(limit))
-                .execute()
-            )
+            def query():
+                return (client.table(self.OWNER_SPLITS_TABLE).select(columns)
+                        .eq("slate_date",str(slate_date)).order("snapshot_time_utc",desc=True).order("id"))
+            records=self._paged_rows(query,int(limit))
             safe_rows: list[dict[str, Any]] = []
-            for item in self._data(resp):
+            for item in records:
                 row = dict(item)
                 row["snapshot_role"] = "observed"
                 safe_rows.append(row)
@@ -262,22 +269,22 @@ class SupabaseSlateStore:
             raise StorageOperationError(f"Supabase best-odds archive `{self.BEST_ODDS_ARCHIVE_TABLE}` is not ready or not accessible: {type(exc).__name__}") from exc
     def list_best_odds_archive(self, start_utc: str | None = None, end_utc: str | None = None, limit: int = 20000) -> list[dict[str, Any]]:
         try:
-            query = self._public.table(self.BEST_ODDS_CARD_VIEW).select("*")
-            if start_utc:
-                query = query.gte("commence_time_utc", start_utc)
-            if end_utc:
-                query = query.lte("commence_time_utc", end_utc)
-            resp = query.order("captured_at_utc", desc=False).limit(int(limit)).execute()
-            return [dict(x) for x in self._data(resp)]
+            def query():
+                q=self._public.table(self.BEST_ODDS_CARD_VIEW).select("*")
+                if start_utc:q=q.gte("commence_time_utc",start_utc)
+                if end_utc:q=q.lte("commence_time_utc",end_utc)
+                return q.order("captured_at_utc",desc=False).order("id").order("snapshot_role")
+            return self._paged_rows(query,int(limit))
         except Exception as exc:
             raise StorageOperationError(f"Could not read automated best-odds archive: {type(exc).__name__}") from exc
+
     def list_market_snapshots(self, slate_date: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
         try:
-            query = self._public.table(self.MARKET_TABLE).select("*")
-            if slate_date:
-                query = query.eq("slate_date", slate_date)
-            resp = query.order("snapshot_time_utc", desc=False).limit(int(limit)).execute()
-            return [dict(x) for x in self._data(resp)]
+            def query():
+                q=self._public.table(self.MARKET_TABLE).select("*")
+                if slate_date:q=q.eq("slate_date",slate_date)
+                return q.order("snapshot_time_utc",desc=False).order("id")
+            return self._paged_rows(query,int(limit))
         except Exception as exc:
             raise StorageOperationError(f"Could not read market snapshots: {type(exc).__name__}") from exc
 

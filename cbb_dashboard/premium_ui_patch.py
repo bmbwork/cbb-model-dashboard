@@ -27,7 +27,7 @@ PREMIUM_CSS = r"""
 .cbb-logo-matchup{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.7rem;border:1px solid rgba(249,115,22,.20);border-radius:14px;background:linear-gradient(110deg,rgba(249,115,22,.075),rgba(20,10,12,.82),rgba(251,191,36,.035));padding:.62rem .7rem;margin:0 0 .62rem}.cbb-logo-team{display:flex;align-items:center;gap:.52rem;min-width:0}.cbb-logo-team.home{justify-content:flex-end;text-align:right}.cbb-logo-team img,.cbb-logo-fallback{width:2rem;height:2rem;object-fit:contain;flex:0 0 2rem}.cbb-logo-fallback{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(249,115,22,.10);border:1px solid rgba(249,115,22,.28);color:#ffd0a8;font-size:.62rem;font-weight:900}.cbb-logo-team strong{display:block;color:#fff7f1;font-size:.83rem;line-height:1.1}.cbb-logo-team small{display:block;color:#a18479;font-size:.56rem;margin-top:.13rem}.cbb-logo-vs{color:#936f62;font-size:.62rem;font-weight:900}
 .cbb-money-shell{border:1px solid rgba(249,115,22,.18);border-radius:14px;background:linear-gradient(145deg,rgba(27,11,14,.96),rgba(14,8,10,.98));padding:.72rem .76rem;margin:.64rem 0}.cbb-money-head{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.58rem}.cbb-money-head strong{color:#ffb56f;font-size:.67rem;letter-spacing:.08em}.cbb-money-head span{color:#927b73;font-size:.55rem}.cbb-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.cbb-money-card{border:1px solid rgba(148,163,184,.11);border-radius:11px;background:linear-gradient(180deg,rgba(255,255,255,.024),rgba(255,255,255,.012));padding:.58rem .60rem;min-width:0}.cbb-money-title{color:#f5ded2;font-size:.59rem;font-weight:900;letter-spacing:.07em;margin-bottom:.34rem}.cbb-money-lead{color:#fff8f4;font-size:.70rem;font-weight:800;line-height:1.24;margin-bottom:.40rem;min-height:1.75em}.cbb-money-meter{position:relative;height:1.58rem;border-radius:8px;overflow:hidden;background:#271a1d;border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}.cbb-money-fill{position:absolute;top:0;bottom:0;z-index:1}.cbb-money-fill.left{left:0;background:linear-gradient(90deg,#088f59,#20c982)}.cbb-money-fill.right{right:0;background:linear-gradient(90deg,#e84b5e,#f06470)}.cbb-money-pct{position:absolute;top:50%;transform:translateY(-50%);z-index:3;color:#fff;font-size:.61rem;font-weight:950;line-height:1;padding:.18rem .30rem;border-radius:999px;background:rgba(8,10,12,.68);border:1px solid rgba(255,255,255,.13);text-shadow:0 1px 2px rgba(0,0,0,.65);white-space:nowrap}.cbb-money-pct.left{left:.24rem}.cbb-money-pct.right{right:.24rem}.cbb-money-labels{display:flex;justify-content:space-between;gap:.42rem;color:#b9a197;font-size:.56rem;margin-top:.31rem}.cbb-money-labels span{min-width:0;overflow-wrap:anywhere}.cbb-ticket-line{color:#927f76;font-size:.54rem;margin-top:.32rem;line-height:1.34}.cbb-money-legend{display:flex;gap:.5rem;align-items:center;color:#806c64;font-size:.51rem;margin-top:.45rem}.cbb-money-legend i{display:inline-block;width:.42rem;height:.42rem;border-radius:50%;margin-right:.18rem}.cbb-money-legend .green{background:#20c982}.cbb-money-legend .red{background:#f06470}
 @media(max-width:900px){.cbb-money-grid{grid-template-columns:1fr}.cbb-logo-team img,.cbb-logo-fallback{width:1.72rem;height:1.72rem;flex-basis:1.72rem}.cbb-logo-team strong{font-size:.75rem}}
-.sf-money-shell{border:1px solid rgba(52,211,153,.18);border-radius:15px;background:linear-gradient(145deg,rgba(9,26,18,.96),rgba(5,16,12,.98));padding:.72rem .78rem;margin:.48rem 0 .78rem}.sf-money-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.6rem}.sf-money-head strong{color:#92f4c5;font-size:.69rem;letter-spacing:.09em}.sf-money-head span{color:#6d8d7d;font-size:.57rem}.sf-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.sf-money-card{border:1px solid rgba(148,163,184,.10);border-radius:11px;background:rgba(255,255,255,.018);padding:.58rem .62rem}.sf-money-title{color:#d9eadf;font-size:.61rem;font-weight:900;letter-spacing:.075em;margin-bottom:.35rem}.sf-money-lead{color:#f5fbf7;font-size:.72rem;font-weight:800;line-height:1.25;margin-bottom:.38rem;min-height:1.8em}.sf-money-bar{height:1.38rem;display:flex;border-radius:7px;overflow:hidden;background:#17231e;border:1px solid rgba(255,255,255,.06)}.sf-money-bar .left,.sf-money-bar .right{display:flex;align-items:center;color:#fff;font-size:.62rem;font-weight:950;padding:0 .33rem;min-width:0}.sf-money-bar .left{justify-content:flex-start;background:linear-gradient(90deg,#079a5a,#16c784)}.sf-money-bar .right{justify-content:flex-end;background:linear-gradient(90deg,#ef4d60,#f15b69)}.sf-money-labels{display:flex;justify-content:space-between;gap:.35rem;color:#9db3a7;font-size:.58rem;margin-top:.3rem}.sf-ticket-line{color:#789486;font-size:.56rem;margin-top:.32rem;line-height:1.35}.sf-ticket-line b{color:#adc5b8}
+.sf-money-source-group{min-width:0}.sf-split-source{font-size:.65rem;color:#b4c9bd;line-height:1.5;margin:.4rem .2rem}.aggregate-public p{font-size:.73rem;color:#b4c9bd}.sf-money-shell{border:1px solid rgba(52,211,153,.18);border-radius:15px;background:linear-gradient(145deg,rgba(9,26,18,.96),rgba(5,16,12,.98));padding:.72rem .78rem;margin:.48rem 0 .78rem}.sf-money-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.6rem}.sf-money-head strong{color:#92f4c5;font-size:.69rem;letter-spacing:.09em}.sf-money-head span{color:#6d8d7d;font-size:.57rem}.sf-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.52rem}.sf-money-card{border:1px solid rgba(148,163,184,.10);border-radius:11px;background:rgba(255,255,255,.018);padding:.58rem .62rem}.sf-money-title{color:#d9eadf;font-size:.61rem;font-weight:900;letter-spacing:.075em;margin-bottom:.35rem}.sf-money-lead{color:#f5fbf7;font-size:.72rem;font-weight:800;line-height:1.25;margin-bottom:.38rem;min-height:1.8em}.sf-money-bar{height:1.38rem;display:flex;border-radius:7px;overflow:hidden;background:#17231e;border:1px solid rgba(255,255,255,.06)}.sf-money-bar .left,.sf-money-bar .right{display:flex;align-items:center;color:#fff;font-size:.62rem;font-weight:950;padding:0 .33rem;min-width:0}.sf-money-bar .left{justify-content:flex-start;background:linear-gradient(90deg,#079a5a,#16c784)}.sf-money-bar .right{justify-content:flex-end;background:linear-gradient(90deg,#ef4d60,#f15b69)}.sf-money-labels{display:flex;justify-content:space-between;gap:.35rem;color:#9db3a7;font-size:.58rem;margin-top:.3rem}.sf-ticket-line{color:#789486;font-size:.56rem;margin-top:.32rem;line-height:1.35}.sf-ticket-line b{color:#adc5b8}
 @media(max-width:900px){.sf-money-grid{grid-template-columns:1fr}}
 </style>
 """
@@ -202,7 +202,7 @@ def _line_team(team: str, line: object) -> str:
 
 def _money_card(title: str, left_label: str, left_money: object, left_tickets: object, right_label: str, right_money: object, right_tickets: object) -> str:
     lm, rm = _finite(left_money), _finite(right_money)
-    if lm is None or rm is None or abs((lm + rm) - 100.0) > 3.0:
+    if lm is None or rm is None or not (0 <= lm <= 100 and 0 <= rm <= 100) or abs((lm + rm) - 100.0) > 1.01:
         return ""
     left_width = max(0.0, min(100.0, lm))
     leader = left_label if lm >= rm else right_label
@@ -210,28 +210,38 @@ def _money_card(title: str, left_label: str, left_money: object, left_tickets: o
     lead = f"Money heavily favors {leader}" if leader_pct >= 75 else (f"Money favors {leader}" if leader_pct >= 60 else f"Money leans {leader}")
     lt, rt = _finite(left_tickets), _finite(right_tickets)
     ticket_text = "Ticket split unavailable"
-    if lt is not None and rt is not None and abs((lt + rt) - 100.0) <= 3.0:
+    if lt is not None and rt is not None and 0 <= lt <= 100 and 0 <= rt <= 100 and abs((lt + rt) - 100.0) <= 1.01:
         ticket_text = f"Tickets: {left_label} {lt:.0f}% · {right_label} {rt:.0f}%"
     return '<div class="sf-money-card">' + f'<div class="sf-money-title">{escape(title)}</div><div class="sf-money-lead">{escape(lead)}</div>' + f'<div class="sf-money-bar" aria-label="{escape(title)} money share"><span class="left" style="width:{left_width:.1f}%">{lm:.0f}%</span><span class="right" style="width:{100-left_width:.1f}%">{rm:.0f}%</span></div>' + f'<div class="sf-money-labels"><span>{escape(left_label)}</span><span>{escape(right_label)}</span></div>' + f'<div class="sf-ticket-line">{escape(ticket_text)}</div></div>'
 
 
 def premium_betting_splits_html(row: pd.Series) -> str:
-    away = str(row.get("Away Team") or "Away")
-    home = str(row.get("Home Team") or "Home")
-    spread_home_line = row.get("_market_current_home_spread")
-    spread_away_line = row.get("_market_current_away_spread")
-    total_line = _finite(row.get("_market_total_line"))
-    over = "Over" if total_line is None else f"Over {total_line:.1f}"
-    under = "Under" if total_line is None else f"Under {total_line:.1f}"
-    cards = [
-        _money_card("SPREAD MONEY", _line_team(away, spread_away_line), row.get("_market_away_money_pct"), row.get("_market_away_ticket_pct"), _line_team(home, spread_home_line), row.get("_market_home_money_pct"), row.get("_market_home_ticket_pct")),
-        _money_card("MONEYLINE MONEY", away, row.get("_market_ml_away_money_pct"), row.get("_market_ml_away_ticket_pct"), home, row.get("_market_ml_home_money_pct"), row.get("_market_ml_home_ticket_pct")),
-        _money_card("TOTAL MONEY", over, row.get("_market_total_over_money_pct"), row.get("_market_total_over_ticket_pct"), under, row.get("_market_total_under_money_pct"), row.get("_market_total_under_ticket_pct")),
+    from .public_consensus import split_snapshot_label
+    away,home = str(row.get("Away Team") or "Away"),str(row.get("Home Team") or "Home")
+    cards=[]
+    specs = [
+        ("spread","SPREAD MONEY",_line_team(away,row.get("_market_spread_split_away_line",row.get("_market_current_away_spread"))),_line_team(home,row.get("_market_spread_split_home_line",row.get("_market_current_home_spread"))),"_market_away","_market_home"),
+        ("ml","MONEYLINE MONEY",away,home,"_market_ml_away","_market_ml_home"),
+        ("total","TOTAL MONEY","Over","Under","_market_total_over","_market_total_under"),
     ]
-    cards = [card for card in cards if card]
-    source = str(row.get("_market_split_source_label") or "Owl Insight")
+    for prefix,title,left,right,lf,rf in specs:
+        if prefix=="total":
+            line=_finite(row.get("_market_total_split_total_line",row.get("_market_total_line")))
+            if line is not None:left,right=f"Over {line:.1f}",f"Under {line:.1f}"
+        card=_money_card(title,left,row.get(lf+"_money_pct"),row.get(lf+"_ticket_pct"),right,row.get(rf+"_money_pct"),row.get(rf+"_ticket_pct"))
+        if not card:
+            lt,rt=_finite(row.get(lf+"_ticket_pct")),_finite(row.get(rf+"_ticket_pct"))
+            if lt is None or rt is None or not(0<=lt<=100 and 0<=rt<=100) or abs(lt+rt-100)>1.01:continue
+            card=f'<div class="sf-money-card"><div class="sf-money-title">{escape(title)}</div><p>Money not reported</p><p>Tickets: {escape(left)} {lt:.0f}% · {escape(right)} {rt:.0f}%</p></div>'
+        source=row.get(f"_market_{prefix}_split_source_label",row.get("_market_split_source_label")) or "Owls Insight"
+        stamp=row.get(f"_market_{prefix}_split_time",row.get("_market_split_latest_snapshot_utc"))
+        cards.append('<div class="sf-money-source-group">'+card+f'<p class="sf-split-source">{escape(str(source))} · {escape(split_snapshot_label(stamp,row))}</p></div>')
+    source = str(row.get("_market_split_source_label") or "Owls Insight")
     if not cards:
-        return '<div class="split-strip empty"><div class="split-strip-head"><span>BETTING SPLITS</span><em>No validated money split snapshot for this matchup</em></div></div>'
+        if bool(row.get("_aggregate_public_available",False)):
+            message="Owl sportsbook splits not reported; reported public consensus is shown below."
+        else:message="No validated money split snapshot for this matchup. Splits have not been reported."
+        return '<div class="split-strip empty"><div class="split-strip-head"><span>BETTING SPLITS</span><em>'+message+'</em></div></div>'
     return f'<div class="sf-money-shell"><div class="sf-money-head"><strong>BETTING SPLITS · {escape(source.upper())}</strong><span>Money = handle share</span></div><div class="sf-money-grid">{"".join(cards)}</div></div>'
 
 
@@ -277,25 +287,33 @@ def _patch_market_attach() -> None:
             if game_rows.empty:
                 continue
 
-            def latest(kind: str) -> pd.Series | None:
+            def latest(kind: str, columns: tuple[str, ...]) -> pd.Series | None:
                 rows = game_rows[game_rows[market_col].astype(str).str.lower().eq(kind)].copy()
-                if rows.empty:
-                    return None
-                if time_col:
-                    rows = rows.sort_values(time_col)
+                usable = pd.Series(False,index=rows.index)
+                for column in columns:
+                    if column in rows:usable |= pd.to_numeric(rows[column],errors="coerce").notna()
+                rows = rows.loc[usable]
+                if rows.empty:return None
+                if time_col:rows = rows.sort_values(time_col)
                 return rows.iloc[-1]
 
-            spread = latest("spread")
-            ml = latest("moneyline")
-            total = latest("total")
+            spread = latest("spread",("Away Line","away_line"))
             if spread is not None:
-                out.at[idx, "_market_current_away_spread"] = _snapshot_value(spread, "Away Line", "away_line")
-            if ml is not None:
-                out.at[idx, "_market_ml_away_ticket_pct"] = _snapshot_value(ml, "Away Ticket %", "away_ticket_pct")
-                out.at[idx, "_market_ml_away_money_pct"] = _snapshot_value(ml, "Away Money %", "away_money_pct")
-            if total is not None:
-                out.at[idx, "_market_total_under_ticket_pct"] = _snapshot_value(total, "Under Ticket %", "under_ticket_pct")
-                out.at[idx, "_market_total_under_money_pct"] = _snapshot_value(total, "Under Money %", "under_money_pct")
+                out.at[idx,"_market_current_away_spread"] = _snapshot_value(spread,"Away Line","away_line")
+            # Both sides, source, timestamp and market line must come from ONE
+            # split row. Newer odds-only rows must never erase a reported split.
+            for kind,prefix,left,right in (("spread","spread","Home","Away"),("moneyline","ml","Home","Away"),("total","total","Over","Under")):
+                selected = latest(kind,tuple(f"{side} {metric} %" for side in (left,right) for metric in ("Money","Ticket")))
+                if selected is None:continue
+                for side,field in ((left,"home" if kind!="total" else "over"),(right,"away" if kind!="total" else "under")):
+                    for metric in ("money","ticket"):
+                        name = f"_market_{field}_{metric}_pct" if kind=="spread" else f"_market_{prefix}_{field}_{metric}_pct"
+                        out.at[idx,name] = _snapshot_value(selected,f"{side} {metric.title()} %",f"{field}_{metric}_pct")
+                out.at[idx,f"_market_{prefix}_split_source_label"] = selected.get("Source Label",selected.get("source_label","Owls Insight"))
+                out.at[idx,f"_market_{prefix}_split_time"] = str(selected.get(time_col) or "") if time_col else ""
+                for side in ("Home","Away"):
+                    out.at[idx,f"_market_{prefix}_split_{side.lower()}_line"] = _snapshot_value(selected,f"{side} Line",f"{side.lower()}_line")
+                out.at[idx,f"_market_{prefix}_split_total_line"] = _snapshot_value(selected,"Total Line","total_line")
         return out
 
     patched._sf_premium = True

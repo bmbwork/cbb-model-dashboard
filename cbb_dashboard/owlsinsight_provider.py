@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 
 from .market import MarketDataError, normalize_market_import, normalize_team_name
+from .owlsinsight_odds_provider import OwlsInsightOddsProvider
 
 
 @dataclass(frozen=True)
@@ -129,16 +130,7 @@ class OwlsInsightSplitsProvider:
 
     @staticmethod
     def _team_score(board_name: str, provider_name: str) -> float:
-        b, p = normalize_team_name(board_name), normalize_team_name(provider_name)
-        if not b or not p:
-            return 0.0
-        if b == p:
-            return 1.0
-        if b in p or p in b:
-            return 0.90
-        bt, pt = set(b.split()), set(p.split())
-        union = len(bt | pt)
-        return (len(bt & pt) / union) if union else 0.0
+        return OwlsInsightOddsProvider._team_score(board_name, provider_name)
 
     def map_board_games(self, board: pd.DataFrame, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         used: set[str] = set()
@@ -150,6 +142,9 @@ class OwlsInsightSplitsProvider:
                 eid = self._event_id(event)
                 if eid and eid in used:
                     continue
+                board_start=pd.to_datetime(row.get("Start Time UTC"),utc=True,errors="coerce")
+                event_start=pd.to_datetime(self._get_alias(event,["commence_time","start_time","game_time"],None),utc=True,errors="coerce")
+                if pd.notna(board_start) and pd.notna(event_start) and abs((board_start-event_start).total_seconds())>8*3600:continue
                 eh, ea = self._team_name(event, "home"), self._team_name(event, "away")
                 direct = (self._team_score(bh, eh) + self._team_score(ba, ea)) / 2.0
                 swapped = (self._team_score(bh, ea) + self._team_score(ba, eh)) / 2.0
@@ -215,7 +210,7 @@ class OwlsInsightSplitsProvider:
 
     @classmethod
     def _pct_field(cls, node: dict[str, Any], names: list[str]) -> float:
-        return cls._pct(cls._get_alias(node, names, np.nan))
+        return cls._num(cls._get_alias(node, names, np.nan))
 
     @classmethod
     def _snapshot_time(cls, payload: Any, event: dict[str, Any], book: dict[str, Any]) -> str:
@@ -223,20 +218,13 @@ class OwlsInsightSplitsProvider:
         aliases = [
             "timestamp", "updated_at", "updatedAt", "last_updated", "lastUpdated",
             "snapshot_time", "snapshotTime", "created_at", "createdAt",
-            "commence_time", "commenceTime", "game_time", "gameTime",
+            "as_of", "observed_at",
         ]
         for obj in [book, event, payload if isinstance(payload, dict) else {}, meta]:
             raw = cls._get_alias(obj, aliases, None)
             ts = pd.to_datetime(raw, utc=True, errors="coerce")
             if pd.notna(ts):
                 return ts.isoformat()
-        # Historical public-betting records may omit an observation timestamp.
-        # Use a deterministic end-of-day marker from the requested archive date
-        # so rerunning the same backfill does not create duplicate hashes.
-        hist_date = cls._get_alias(meta, ["date"], None)
-        hist_day = pd.to_datetime(hist_date, utc=True, errors="coerce")
-        if pd.notna(hist_day):
-            return (hist_day.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)).isoformat()
         return datetime.now(timezone.utc).isoformat()
 
     @classmethod
@@ -296,6 +284,10 @@ class OwlsInsightSplitsProvider:
         return common
 
     def parse(self, payload: Any, board: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
+        if not isinstance(payload,(dict,list)) or (isinstance(payload,dict) and payload.get("success") is False):
+            raise MarketDataError("Owls split response was invalid or unsuccessful.")
+        if isinstance(payload,dict) and not any(k in payload for k in ("data","results","games","events","items","records")):
+            raise MarketDataError("Owls split response did not contain an event collection.")
         events = self._data_list(payload)
         mapped = self.map_board_games(board, events)
         rows: list[dict[str, Any]] = []
@@ -309,6 +301,11 @@ class OwlsInsightSplitsProvider:
                 for kind in ["spread", "moneyline", "total"]:
                     parsed = self._parse_market_row(payload, board_row, event, item["provider_game_id"], book, kind)
                     if parsed:
+                        if item["swapped"] and kind in {"spread","moneyline"}:
+                            for suffix in ("Ticket %","Money %","Line","Price"):
+                                left,right = "Home "+suffix,"Away "+suffix
+                                if left in parsed or right in parsed:
+                                    parsed[left],parsed[right] = parsed.get(right),parsed.get(left)
                         rows.append(parsed)
             if len(rows) == before:
                 empty_games.append(str(board_row.get("Game ID") or ""))

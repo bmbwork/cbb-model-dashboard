@@ -876,15 +876,15 @@ def best_odds_html(row: pd.Series) -> str:
 
     fair = _num(row, "Fair Spread")
     fair_text = fmt_spread(fair, pick) if np.isfinite(fair) else "—"
-    spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book) if np.isfinite(current_spread) else "Not offered"
-    ml_text = (f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if current_ml_book else fmt_odds(current_ml)) if np.isfinite(current_ml) else "Not offered"
+    spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book) if np.isfinite(current_spread) else "Not reported by tracked books"
+    ml_text = (f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if current_ml_book else fmt_odds(current_ml)) if np.isfinite(current_ml) else "Not reported by tracked books"
     implied = fmt_odds(row.get("Fair Moneyline"))
 
     if np.isfinite(open_spread):
         open_text = f"{open_spread:+.1f}" + (f" · {esc(open_book)}" if open_book else "")
     else:
         open_text = "Not tracked"
-    current_text = f"{current_spread:+.1f}" if np.isfinite(current_spread) else "Not offered"
+    current_text = f"{current_spread:+.1f}" if np.isfinite(current_spread) else "Not reported by tracked books"
     close_text = f"{close_spread:+.1f}" + (f" · {esc(close_book)}" if close_book else "") if np.isfinite(close_spread) else "Pending"
 
     move = current_spread - open_spread if np.isfinite(current_spread) and np.isfinite(open_spread) else float("nan")
@@ -904,6 +904,9 @@ def best_odds_html(row: pd.Series) -> str:
         clv = selected_decision - close_spread
         clv_text = f"{clv:+.1f} pts" if abs(clv) >= 0.05 else "0.0 pts"
 
+    from .public_consensus import split_snapshot_label
+    quote_time = row.get("_best_current_spread_captured_at_utc",row.get("_best_current_moneyline_captured_at_utc"))
+    quote_note = split_snapshot_label(quote_time,row)
     primary = "".join([
         f'<div class="primary-stat model"><span>MODEL SPREAD</span><strong>{esc(fair_text)}</strong><small>independent forecast line</small></div>',
         f'<div class="primary-stat market"><span>BEST SPREAD NOW</span><strong>{spread_text}</strong><small>best point first, then price</small></div>',
@@ -914,7 +917,8 @@ def best_odds_html(row: pd.Series) -> str:
       <div class="primary-bet-grid">{primary}</div>
       <div class="market-status {tone}">
         <span class="market-dot"></span><strong>MARKET PULSE · {esc(signal)}</strong>
-        <span>Open {open_text} · Current {current_text} · Close {close_text} · CLV {esc(clv_text)}</span>
+        <span>First tracked {open_text} · Current {current_text} · Close {close_text} · CLV {esc(clv_text)}</span>
+        <small>{esc(quote_note)}</small>
       </div>
     """)
 

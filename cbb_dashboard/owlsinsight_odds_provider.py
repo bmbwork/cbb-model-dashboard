@@ -297,6 +297,18 @@ class OwlsInsightOddsProvider:
                 return by_key[key], True
         return books[0], True
 
+    def _reference_market_book(self, event: dict[str, Any], key: str):
+        # A preferred book may report ML while another reports the spread or
+        # total. Select a real, unsuspended quote independently for each market.
+        usable=[]
+        for book in event.get("bookmakers") or []:
+            market=self._market(book,key)
+            if not market or bool(market.get("suspended")):continue
+            field="price" if key=="h2h" else "point"
+            if any(np.isfinite(pd.to_numeric(outcome.get(field),errors="coerce")) for outcome in market.get("outcomes",[]) if isinstance(outcome,dict)):
+                usable.append(book)
+        return self._reference_book({**event,"bookmakers":usable})
+
     @classmethod
     def _last_update(
         cls,
@@ -428,24 +440,17 @@ class OwlsInsightOddsProvider:
             raise MarketDataError(
                 "Snapshot role must be one of: observed, open, decision, close."
             )
-        ref, used_fallback = self._reference_book(event)
-        if ref is None:
-            return pd.DataFrame(), used_fallback
+        used_fallback = False
 
         provider_home = str(event.get("home_team") or "")
         provider_away = str(event.get("away_team") or "")
         board_home_provider_name = provider_away if swapped else provider_home
         board_away_provider_name = provider_home if swapped else provider_away
-        ref_key = str(ref.get("key") or "").lower()
-        ref_title = str(ref.get("title") or ref.get("key") or "sportsbook")
         provider_ids = event.get("provider_ids") if isinstance(event.get("provider_ids"), dict) else {}
-        provider_game_id = str(provider_ids.get(ref_key) or event.get("id") or "")
         start = self._parse_timestamp(event.get("commence_time") or row.get("Start Time UTC"))
         summary = self._book_spread_summary(event, board_home_provider_name)
         book_count = int(summary["count"]) if np.isfinite(summary["count"]) else 0
         sharp_count = int(summary.get("sharp_count") or 0)
-        scope = f"{ref_title} reference · {book_count} books compared · sharp {sharp_count}/2"
-        source = f"Owls Insight · {ref_title}"
         signal_text = self._provider_signals(summary)
         board_date = str(row.get("Target Date") or "").strip()
         if not board_date and pd.notna(start):
@@ -453,7 +458,12 @@ class OwlsInsightOddsProvider:
 
         rows: list[dict[str, Any]] = []
 
-        def common(market_key: str, stamp: str) -> dict[str, Any]:
+        def common(market_key: str, stamp: str, book: dict[str, Any]) -> dict[str, Any]:
+            ref_key=str(book.get("key") or "").lower()
+            ref_title=str(book.get("title") or book.get("key") or "sportsbook")
+            provider_game_id=str(provider_ids.get(ref_key) or event.get("id") or "")
+            source=f"Owls Insight · {ref_title}"
+            scope=f"{ref_title} reference · {book_count} books compared · sharp {sharp_count}/2"
             st = self._parse_timestamp(stamp)
             if pd.isna(st):
                 st = pd.Timestamp.now(tz="UTC")
@@ -479,7 +489,9 @@ class OwlsInsightOddsProvider:
                 "Book Agreement": summary["agreement"] if market_key == "spread" else "",
             }
 
-        spread = self._market(ref, "spreads")
+        ref, fallback = self._reference_market_book(event,"spreads")
+        used_fallback |= fallback
+        spread = self._market(ref,"spreads") if ref else None
         if spread and not bool(spread.get("suspended")):
             home = self._outcome(spread, board_home_provider_name)
             away = self._outcome(spread, board_away_provider_name)
@@ -487,7 +499,7 @@ class OwlsInsightOddsProvider:
             away_point = pd.to_numeric((away or {}).get("point"), errors="coerce")
             if pd.notna(home_point) or pd.notna(away_point):
                 stamp = self._last_update(ref, spread, response_timestamp)
-                item = common("spread", stamp)
+                item = common("spread", stamp, ref)
                 item.update(
                     {
                         "Home Line": home_point,
@@ -500,13 +512,15 @@ class OwlsInsightOddsProvider:
                 )
                 rows.append(item)
 
-        h2h = self._market(ref, "h2h")
+        ref, fallback = self._reference_market_book(event,"h2h")
+        used_fallback |= fallback
+        h2h = self._market(ref,"h2h") if ref else None
         if h2h and not bool(h2h.get("suspended")):
             home = self._outcome(h2h, board_home_provider_name)
             away = self._outcome(h2h, board_away_provider_name)
             if home or away:
                 stamp = self._last_update(ref, h2h, response_timestamp)
-                item = common("moneyline", stamp)
+                item = common("moneyline", stamp, ref)
                 item.update(
                     {
                         "Home Price": pd.to_numeric((home or {}).get("price"), errors="coerce"),
@@ -515,14 +529,16 @@ class OwlsInsightOddsProvider:
                 )
                 rows.append(item)
 
-        total = self._market(ref, "totals")
+        ref, fallback = self._reference_market_book(event,"totals")
+        used_fallback |= fallback
+        total = self._market(ref,"totals") if ref else None
         if total and not bool(total.get("suspended")):
             over = self._outcome(total, "Over")
             under = self._outcome(total, "Under")
             point = pd.to_numeric((over or under or {}).get("point"), errors="coerce")
             if pd.notna(point):
                 stamp = self._last_update(ref, total, response_timestamp)
-                item = common("total", stamp)
+                item = common("total", stamp, ref)
                 item.update(
                     {
                         "Total Line": point,
