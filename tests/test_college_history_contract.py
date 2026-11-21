@@ -53,7 +53,7 @@ class Contracts(unittest.TestCase):
  def test_dry_run_does_not_write(self):
   class Refuse:
    def __getattr__(self,_):raise AssertionError('DB touched')
-  with patch.object(C,'fetch',return_value=([],['Home'],[])):
+  with patch.object(C,'fetch',return_value=([],['Home'],[],{})):
    self.assertTrue(C.collect('cfb',2026,Refuse(),'TEST',NOW,True)['dry_run'])
  def test_quarantine_blocks_both_teams_but_keeps_verified_other_game(self):
   excluded=set()
@@ -62,6 +62,19 @@ class Contracts(unittest.TestCase):
   self.assertEqual(excluded,{'Home','Away'});self.assertEqual(len(rows),1);self.assertEqual(rows[0]['event_id'],'3')
  def test_quarantine_cannot_hide_unknown_identity(self):
   with self.assertRaises(ValueError):C.normalize('cbb',2027,[cbb(homeTeam='')],[],NOW,quarantine=set())
+ def test_date_only_ap_alias_is_safe_next_day(self):
+  payload=poll('2026-11-16')
+  for p in payload:p['pollType']='AP Top 25'
+  parsed=C.polls_cbb(payload,2027)
+  rows,_=C.normalize('cbb',2027,[cbb()],parsed,NOW)
+  self.assertEqual(rows[0]['away_rank'],1)
+  self.assertEqual(rows[0]['ranking_as_of'],'2026-11-17T05:00:00+00:00')
+  self.assertIn('2026-11-16',rows[0]['ranking_source'])
+ def test_undated_and_coaches_do_not_become_ap(self):
+  payload=poll(None)
+  self.assertEqual(C.polls_cbb(payload,2027),[])
+  for p in payload:p['pollDate']='2026-11-16';p['pollType']='Coaches'
+  self.assertEqual(C.polls_cbb(payload,2027),[])
  def test_cfb_full_poll_required(self):
   ranks=[dict(school='Team'+str(i),rank=i+1) for i in range(25)]
   base=dict(season=2026,seasonType='regular',week=2,polls=[dict(poll='AP Top 25',ranks=ranks)])
