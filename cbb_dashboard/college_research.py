@@ -138,14 +138,13 @@ def team_research(team, games, coverage, cutoff, now, season, *, eligible=True):
 
 
 def _quote_pairs(row, snapshots, now):
-    start = stamp(row.get("Start Time UTC"))
-    if pd.isna(start) or start <= now or snapshots is None or snapshots.empty:
+    if snapshots is None or snapshots.empty:
         return {}
     candidates = snapshots.loc[snapshots["Game ID"].astype(str) == str(row.get("Game ID"))].copy()
     if candidates.empty:
         return {}
     candidates["_time"] = pd.to_datetime(candidates["Snapshot Time UTC"], utc=True, errors="coerce")
-    candidates = candidates.loc[candidates["_time"].notna() & (candidates["_time"] <= now) & (candidates["_time"] < start)]
+    candidates = candidates.loc[candidates["_time"].notna() & (candidates["_time"] <= now)]
     result = {}
     pick_home = row.get("Model Pick") == row.get("Home Team")
     for _, q in candidates.sort_values("_time", ascending=False).iterrows():
@@ -243,39 +242,12 @@ def assessment(row):
 
 
 def bottom_line(row, *, now=None):
-    now = stamp(now if now is not None else pd.Timestamp.now(tz="UTC"))
+    from .college_bottom_line import render_bottom_line
     pick = str(row.get("Model Pick") or "the model pick")
-    chance = number(row.get("Win Probability"))
-    fair = fair_spread_for_pick(row)
-    intro = f"The model gives {pick} a {chance * 100:.1f}% chance to win" if chance is not None and 0 <= chance <= 1 else "The model win probability is not verified"
-    if fair is not None:
-        intro += f" and a fair spread of {pick} {fair:+.1f}"
-    intro += ". "
-    start = stamp(row.get("Start Time UTC"))
-    if pd.isna(start) or now >= start:
-        return intro + "Pass on a new pregame play: this is historical/post-start research or the tipoff time is unverified."
-    pub = stamp(row.get("_college_published_at"))
-    run = stamp(row.get("Model Run At UTC"))
-    if not ((pd.notna(pub) and pub < start) or (pd.notna(run) and run < start)):
-        return intro + "Pass for now: pregame publication timing is not verified."
-    if ("Deployment Eligible" in row and not _true(row.get("Deployment Eligible"))) or ("D1 Evaluation Eligible" in row and not _true(row.get("D1 Evaluation Eligible"))):
-        return intro + "Pass: this forecast is outside the validated prospective deployment population."
     quotes = row.get("_college_quotes")
     quotes = quotes if isinstance(quotes, dict) else {}
-    ml = quotes.get("moneyline")
-    if ml and ml.get("fresh") and chance is not None and 0 <= chance <= 1:
-        price = ml["price"]
-        implied = 100 / (price + 100) if price > 0 else -price / (-price + 100)
-        if chance - implied >= .03:
-            label = "underdog moneyline" if price > 0 else "moneyline"
-            return intro + f"{label.capitalize()} lean: {pick} {price:+.0f} at {ml['book']}. The model chance is {(chance-implied)*100:.1f} percentage points above that price's break-even rate. Recheck line movement and splits before taking this captured price."
-    spread = quotes.get("spread")
-    if spread and spread.get("fresh") and fair is not None and spread.get("line") is not None and spread["line"] - fair >= 2:
-        narrow = " The winner lean is narrow; be cautious." if chance is not None and chance < .58 else ""
-        return intro + f"Spread lean: {pick} {spread['line']:+.1f} at {spread['book']} gives {spread['line']-fair:.1f} more points than the model fair line. That is a line-value comparison, not an estimated cover probability.{narrow} Recheck movement and splits."
-    if not any(q.get("fresh") for q in quotes.values()):
-        return intro + "Pass for now: a fresh, paired sportsbook quote is not available."
-    return intro + "Pass at the captured prices: the comparison does not show enough value for a play."
+    return render_bottom_line(pick, fair_spread_for_pick(row), number(row.get("Win Probability")),
+                              quotes.get("spread"), quotes.get("moneyline"), minimum_gap=2)
 
 
 RESEARCH_CSS = '<style>.college-assessment{border:1px solid #395348;border-radius:12px;padding:14px;margin:10px 0;background:rgba(12,30,21,.55)}.college-assessment h3{font-size:1rem;color:#e4f8ed;margin:0 0 8px}.college-assessment p{font-size:.85rem;line-height:1.6;margin:5px 0;color:#c9d6ce}.college-notable{margin:12px 0;border:1px solid #39473e;border-radius:10px;padding:10px}.college-notable summary{cursor:pointer;font-weight:800;color:#e4f8ed}.college-notable-team{margin:10px 0}.college-notable table{width:100%;font-size:.75rem;border-collapse:collapse}.college-notable td,.college-notable th{padding:7px 5px;text-align:left;border-bottom:1px solid #293b31}.college-notable small{color:#9aada2}.college-notable .win{color:#64dea2}.college-notable .loss{color:#fb8994}</style>'

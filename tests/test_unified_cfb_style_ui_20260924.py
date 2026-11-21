@@ -62,5 +62,6 @@ def test_dossier_matches_cfb_plain_english_contract() -> None:
 def test_assessment_and_bottom_line_do_not_invent_team_results_or_a_play() -> None:
     html = evidence_html(_row())
     assert "a complete season record is not verified" in html
-    assert "Pass" in html
+    assert "until a sportsbook price is reported" in html
+    assert "Pass" not in html
     assert "No verified AP-ranked opponent results" in html

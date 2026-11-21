@@ -121,7 +121,7 @@ def test_historical_cutoff_excludes_later_games_and_late_known_results():
     late = attach([game(1, completed_at=None)], raw)
     assert late["_college_home"]["record"] is None
     assert late["_college_home"]["notable"] == []
-    assert "Pass on a new pregame play" in bottom_line(row, now=NOW)
+    assert "historical" not in bottom_line(row, now=NOW)
 
 
 def test_deduplicated_games_and_early_season_do_not_claim_an_established_good_team():
@@ -150,41 +150,39 @@ def test_struggling_and_mixed_assessments_use_full_record_not_just_visible_notab
 
 def test_bottom_line_spread_uses_selected_team_sign_and_coherent_valid_prices():
     row = attach([], quotes=quote())
-    assert "Spread lean: Home State -3.0 at DraftKings" in bottom_line(row, now=NOW)
+    assert "I lean toward Home State at -3.0" in bottom_line(row, now=NOW)
     assert "4.0 more points" in bottom_line(row, now=NOW)
-    assert "not an estimated cover probability" in bottom_line(row, now=NOW)
     away = attach([], board(**{"Model Pick": "Away State", "Fair Spread": -7,
                                  "Fair Home Spread": -7}), quotes=quote())
     assert fair_spread_for_pick(away) == 7
-    assert "fair spread of Away State +7.0" in bottom_line(away, now=NOW)
-    assert "Pass at the captured prices" in bottom_line(away, now=NOW)
+    assert "Away State as a 7.0-point underdog" in bottom_line(away, now=NOW)
+    assert "wait for a better number" in bottom_line(away, now=NOW)
 
 
 def test_moneyline_value_uses_break_even_price_and_returns_an_actual_underdog_lean():
     row = attach([], quotes=quote("moneyline", **{"Home Price": 120, "Away Price": -140}))
     text = bottom_line(row, now=NOW)
-    assert "Underdog moneyline lean: Home State +120 at DraftKings" in text
+    assert "I lean toward Home State moneyline at +120 (DraftKings)" in text
     assert "break-even rate" in text
 
 
 @pytest.mark.parametrize("patch", [
-    {"Snapshot Time UTC": "2026-11-21T12:00:00Z"},
     {"Snapshot Time UTC": "2026-11-21T15:00:01Z"},
     {"Away Price": None}, {"Away Line": 5},
     {"Source Label": "Owls Insight · Consensus · Multiple books"},
 ])
-def test_no_play_from_stale_future_incomplete_or_mismatched_pairs(patch):
+def test_no_price_comparison_from_future_incomplete_or_mismatched_pairs(patch):
     row = attach([], quotes=quote(**patch))
-    assert "Pass for now" in bottom_line(row, now=NOW)
+    assert "until a sportsbook price is reported" in bottom_line(row, now=NOW)
     assert "Spread lean:" not in bottom_line(row, now=NOW)
 
 
-def test_unknown_publication_and_ineligible_rows_pass_even_with_apparent_value():
+def test_publication_and_population_flags_do_not_replace_the_price_comparison():
     row = attach([], quotes=quote())
     row["_college_published_at"] = None
-    assert "publication timing is not verified" in bottom_line(row, now=NOW)
+    assert "I lean toward Home State at -3.0" in bottom_line(row, now=NOW)
     row = attach([], board(**{"Deployment Eligible": False}), quotes=quote())
-    assert "outside the validated" in bottom_line(row, now=NOW)
+    assert "I lean toward Home State at -3.0" in bottom_line(row, now=NOW)
 
 
 def test_new_dossier_replaces_repetitive_sections_and_escapes_upstream_text():
@@ -195,3 +193,16 @@ def test_new_dossier_replaces_repetitive_sections_and_escapes_upstream_text():
     assert "Home State (1-0)" in game_card_html(row)
     row["Model Pick"] = "<script>bad</script>"
     assert "<script>bad</script>" not in dossier_html(row)
+
+@pytest.mark.parametrize("updates", [
+    {"_college_published_at": None}, {"Model Run At UTC": None},
+    {"Start Time UTC": None}, {"Start Time UTC": "2026-11-01T12:00:00Z"},
+    {"Deployment Eligible": False},
+])
+def test_bottom_line_uses_book_comparison_regardless_of_audit_metadata(updates):
+    expected = bottom_line(attach([], quotes=quote()), now=NOW)
+    row = attach([], board(**updates), quotes=quote())
+    for key, value in updates.items(): row[key] = value
+    actual = bottom_line(row, now=NOW)
+    assert actual == expected
+    assert not any(word in actual.lower() for word in ("historical", "timing", "unverified", "pass"))
