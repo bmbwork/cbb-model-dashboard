@@ -9,6 +9,7 @@ import pandas as pd
 from .ui import esc, fmt_num, fmt_odds, fmt_pct, fmt_spread
 from .market import context_flags, market_features
 from .public_consensus import aggregate_public_books_html
+from .college_research import college_research_html, fair_spread_for_pick, team_record_label
 
 
 DECISION_HOME_SPREAD_COLUMNS = (
@@ -199,7 +200,8 @@ def selected_team_spread(row: pd.Series, home_spread: float) -> float:
 def model_market_gap(row: pd.Series) -> float:
     home_line, _ = decision_home_spread(row)
     selected_line = selected_team_spread(row, home_line)
-    fair = _num(row, "Fair Spread")
+    fair = fair_spread_for_pick(row)
+    fair = fair if fair is not None else float("nan")
     if not (np.isfinite(selected_line) and np.isfinite(fair)):
         return float("nan")
     # Positive means the stored decision/market line is more favorable to the
@@ -427,7 +429,7 @@ def _team_profile_card(row: pd.Series, team: str, focus_team: str) -> str:
         classes += " selected"
     return compact_html(f"""
       <div class="{classes}">
-        <div class="team-profile-head"><div><span>{esc(role)}</span><strong>{esc(team)}</strong></div>{'<span class="pick-check">✓</span>' if is_pick else ''}</div>
+        <div class="team-profile-head"><div><span>{esc(role)}</span><strong>{esc(team_record_label(row, team))}</strong></div>{'<span class="pick-check">✓</span>' if is_pick else ''}</div>
         <div class="team-profile-metrics">{metrics}</div>
       </div>
     """)
@@ -482,29 +484,7 @@ def matchup_battle_html(row: pd.Series, focus_team: str | None = None) -> str:
     """)
 
 def evidence_html(row: pd.Series) -> str:
-    positives, risks = signal_readout(row)
-
-    def evidence_kind(text: str) -> str:
-        lowered = text.lower()
-        market_words = ("market", "betting", "sharp-money", "sportsbook", "crowd", "ticket", "money side")
-        return "MARKET" if any(word in lowered for word in market_words) else "MODEL"
-
-    def lis(items: Iterable[str]) -> str:
-        rows = []
-        for item in items:
-            kind = evidence_kind(str(item))
-            rows.append(
-                f'<li><span class="evidence-tag {kind.lower()}">{kind}</span> {esc(item)}</li>'
-            )
-        return "".join(rows)
-
-    pick = str(row.get("Model Pick") or "the pick")
-    return compact_html(f"""
-      <div class="evidence-grid">
-        <div class="evidence-box positive"><div class="evidence-title">WHY {esc(pick)} IS THE PICK</div><ul class="evidence-list">{lis(positives)}</ul></div>
-        <div class="evidence-box risk"><div class="evidence-title">WHAT COULD GO WRONG</div><ul class="evidence-list">{lis(risks)}</ul></div>
-      </div>
-    """)
+    return compact_html(college_research_html(row))
 
 
 
@@ -874,7 +854,8 @@ def best_odds_html(row: pd.Series) -> str:
     close_spread = _num(row, f"_best_close_spread_{side}_line")
     close_book = _archive_book(row, f"_best_close_spread_{side}_book_title")
 
-    fair = _num(row, "Fair Spread")
+    fair = fair_spread_for_pick(row)
+    fair = fair if fair is not None else float("nan")
     fair_text = fmt_spread(fair, pick) if np.isfinite(fair) else "—"
     spread_text = _spread_quote(current_spread, current_spread_price, current_spread_book) if np.isfinite(current_spread) else "Not reported by tracked books"
     ml_text = (f"{fmt_odds(current_ml)} · {esc(current_ml_book)}" if current_ml_book else fmt_odds(current_ml)) if np.isfinite(current_ml) else "Not reported by tracked books"
@@ -943,7 +924,7 @@ def dossier_html(row: pd.Series) -> str:
     """)
     return compact_html(f"""
       <details class="intel-dossier">
-        <summary><span>Game intelligence dossier</span><span>Why the pick · what could go wrong · market context ＋</span></summary>
+        <summary><span>Game intelligence dossier</span><span>Team assessment · Notable W/Ls · sportsbook value ＋</span></summary>
         <div class="dossier-body">
           <div class="firewall-note"><strong>Model firewall:</strong> MODEL = what Stat Factory predicted before sportsbook data was added. MARKET = odds and betting data attached later. Market information never changes the original model pick.</div>
           {evidence_html(row)}
@@ -988,7 +969,7 @@ def game_card_html(row: pd.Series) -> str:
         tag = '<span class="team-tag">ML PICK</span>' if name == pick else ""
         return (
             f'<div class="team-row {"pick" if name == pick else ""}">'
-            f'<div class="team-name">{ap_label(ap_rank)}{esc(name)}{tag}</div>'
+            f'<div class="team-name">{ap_label(ap_rank)}{esc(team_record_label(row, name))}{tag}</div>'
             f'<div class="team-projection"><span>PROJ</span><strong>{fmt_num(score,1)}</strong></div>'
             f'<div class="team-chance"><span>WIN</span><strong>{fmt_pct(chance)}</strong></div>'
             f'</div>'
@@ -1002,7 +983,8 @@ def game_card_html(row: pd.Series) -> str:
         chips.insert(1, '<span class="chip orange">Neutral court</span>')
 
     result = _result_banner(row)
-    fair = _num(row, "Fair Spread")
+    fair = fair_spread_for_pick(row)
+    fair = fair if fair is not None else float("nan")
     fair_text = fmt_spread(fair, pick) if np.isfinite(fair) else "—"
 
     return compact_html(f"""

@@ -51,14 +51,16 @@ def test_primary_market_strip_uses_heating_cooling_language() -> None:
 def test_dossier_matches_cfb_plain_english_contract() -> None:
     html = dossier_html(_row())
     assert "Game intelligence dossier" in html
-    assert "WHY Home State IS THE PICK" in html
-    assert "WHAT COULD GO WRONG" in html
+    assert "Is Home State actually good?" in html
+    assert "Bottom Line" in html
+    assert "Notable W/Ls" in html
+    assert "WHAT COULD GO WRONG" not in html
     assert "MODEL = what Stat Factory predicted before sportsbook data was added" in html
     assert "Market information never changes the original model pick" in html
 
 
-def test_evidence_visually_separates_model_and_market_context() -> None:
+def test_assessment_and_bottom_line_do_not_invent_team_results_or_a_play() -> None:
     html = evidence_html(_row())
-    assert 'evidence-tag model' in html
-    assert 'evidence-tag market' in html
-    assert "sharp-money signal" in html.lower()
+    assert "a complete season record is not verified" in html
+    assert "Pass" in html
+    assert "No verified AP-ranked opponent results" in html

@@ -454,7 +454,7 @@ def render_board(board: pd.DataFrame, report) -> None:
         st.warning(warning, icon="⚠️")
 
     st.markdown("<div class=\"section-title\">Today's Board</div>", unsafe_allow_html=True)
-    st.markdown('<div class="section-note">The card now keeps the model, best sportsbook price, market lifecycle and betting splits in one scan. Open <strong>Why this pick?</strong> only when you want the deeper matchup explanation.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">Open the <strong>Game intelligence dossier</strong> for a team assessment, Notable W/Ls and a price-aware Bottom Line.</div>', unsafe_allow_html=True)
     scope = st.segmented_control("Card depth", ["Top 10", "All"], default="Top 10", label_visibility="collapsed")
     n = 10 if scope == "Top 10" else len(board)
     st.markdown(game_card_grid_html(board.head(n)), unsafe_allow_html=True)
@@ -1311,6 +1311,11 @@ def cached_context_list(_store: SupabaseSlateStore | None, slate_date: str) -> l
     return _store.list_game_context(slate_date=slate_date, limit=5000)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_college_history(_store: SupabaseSlateStore | None, season: int):
+    return _store.list_college_history(season) if _store else ([], [])
+
+
 def load_public_board(
     record: dict[str, Any] | None,
     store: SupabaseSlateStore | None,
@@ -1370,6 +1375,19 @@ def load_public_board(
                 market_error = str(exc)
     except Exception as exc:
         st.error(f"The published board could not be validated: {exc}")
+    if not board.empty:
+        from cbb_dashboard.college_research import attach_college_research, season_for_row
+        history, coverage = [], []
+        try:
+            for season in {season_for_row(r) for _, r in board.iterrows()} - {None}:
+                games, runs = cached_college_history(store, int(season))
+                history.extend(games)
+                coverage.extend(runs)
+        except Exception:
+            # An unavailable history feed must say unknown, never invent 0-0.
+            history, coverage = [], []
+        board = attach_college_research(board, history, coverage, market_snapshots,
+                                        published_at=record.get("published_at"))
     return board, report, market_snapshots, market_context, market_error
 
 

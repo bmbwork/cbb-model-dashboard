@@ -298,6 +298,22 @@ class SupabaseSlateStore:
         except Exception as exc:
             raise StorageOperationError(f"Could not read game context: {type(exc).__name__}") from exc
 
+    def list_college_history(self, season: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Read completed season evidence once per board, using private access."""
+        client = self._admin_client()
+        def query():
+            return (client.table("college_game_history").select("*")
+                    .eq("sport", "cbb").eq("season", int(season))
+                    .order("start_time").order("event_id"))
+        games = self._paged_rows(query, 20000)
+        if len(games) == 20000:
+            raise StorageOperationError("College history exceeds its safe read bound; refusing a partial season record.")
+        coverage = self._data(client.table("college_history_refresh_runs")
+                              .select("sport,season,complete,complete_from,complete_through,completed_at,source,covered_teams")
+                              .eq("sport", "cbb").eq("season", int(season)).eq("complete", True)
+                              .order("completed_at", desc=True).limit(1).execute())
+        return games, coverage
+
     def publish_market_records(self, records: list[dict[str, Any]]) -> int:
         if not records:
             return 0
