@@ -49,7 +49,7 @@ def polls_cfb(payload,season):
     return result
 
 def ap_poll(value):
-    return name(value) in ('ap','ap top 25','associated press','associated press top 25')
+    return name(value).replace(' ','') in ('ap','aptop25','associatedpress','associatedpresstop25')
 
 def poll_moment(value):
     # A date-only or midnight publication stamp is a calendar-day assertion,
