@@ -189,10 +189,11 @@ def _finite(value: object) -> float | None:
 
 
 def _matchup_banner(row: pd.Series) -> str:
+    from .college_research import team_record_label
     away = str(row.get("Away Team") or "Away")
     home = str(row.get("Home Team") or "Home")
     game_date = _row_game_date(row)
-    return '<div class="cbb-logo-matchup">' + f'<div class="cbb-logo-team away">{_logo_html(away, game_date)}<div><strong>{escape(away)}</strong><small>AWAY</small></div></div>' + '<div class="cbb-logo-vs">VS</div>' + f'<div class="cbb-logo-team home"><div><strong>{escape(home)}</strong><small>HOME</small></div>{_logo_html(home, game_date)}</div>' + '</div>'
+    return '<div class="cbb-logo-matchup">' + f'<div class="cbb-logo-team away">{_logo_html(away, game_date)}<div><strong>{escape(team_record_label(row,away))}</strong><small>AWAY</small></div></div>' + '<div class="cbb-logo-vs">VS</div>' + f'<div class="cbb-logo-team home"><div><strong>{escape(team_record_label(row,home))}</strong><small>HOME</small></div>{_logo_html(home, game_date)}</div>' + '</div>'
 
 
 def _line_team(team: str, line: object) -> str:

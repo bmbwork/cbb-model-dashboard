@@ -9,7 +9,7 @@ def test_game_card_hides_public_jargon(board_df):
     html = game_card_html(board.iloc[0])
     for banned in ["P10", "P90", "SOS gap", "AdjO", "AdjD", "AdjNet", "Margin SD", "D-I SOS"]:
         assert banned not in html
-    for friendly in ["Data confidence", "Model-implied odds", "Why this pick?"]:
+    for friendly in ["Data confidence", "Model-implied odds", "Game intelligence dossier", "Bottom Line"]:
         assert friendly in html
     assert "Likely result range" not in html
     assert "Either team can realistically win" not in html
