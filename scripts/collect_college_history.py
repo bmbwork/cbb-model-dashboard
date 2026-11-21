@@ -117,7 +117,7 @@ def fetch(sport,season,key,now,session=requests):
             games.extend(request_list(session,url+'/games',key,{'season':season,'seasonType':season_type}))
         if not games: raise ValueError('Empty season schedule')
         teams=request_list(session,url+'/teams',key,{'season':season})
-        if len(teams)<200: raise ValueError('Season team directory is incomplete')
+        if len(teams)<200: raise ValueError(f'Season team directory is incomplete: {len(teams)}')
         raw_polls=request_list(session,url+'/rankings',key,{'season':season,'pollType':'ap'})
         rows,_=normalize(sport,season,games,polls_cbb(raw_polls,season),datetime.now(UTC))
         covered=sorted({str(t.get('school')).strip() for t in teams if t.get('school')})
@@ -165,6 +165,8 @@ def collect(sport,season,db,key,now=None,dry_run=False):
             # or exception messages that may include those values.
             status=getattr(getattr(exc,'response',None),'status_code',None)
             summary=type(exc).__name__+(f' HTTP {status}' if status else '')
+            if isinstance(exc,ValueError) and any(str(exc).startswith(label) for label in ('Provider did not return a complete list','Provider season mismatch','Invalid eligible finals:','Conflicting provider final','Empty season schedule','Season team directory is incomplete','No verified season membership','History exceeds safe pagination bound')):
+                summary+=' '+str(exc)
             try: db.post('college_history_refresh_runs',{'sport':sport,'season':season,'status':'failed','complete':False,'completed_at':datetime.now(UTC).isoformat(),'source':source,'error_summary':summary})
             except Exception: pass
         raise
@@ -180,5 +182,8 @@ def main():
     try: print(json.dumps(collect(args.sport,season,db,key,now,args.dry_run),sort_keys=True))
     except Exception as exc:
         status=getattr(getattr(exc,'response',None),'status_code',None)
-        print(json.dumps({'sport':args.sport,'season':season,'status':'failed','error':type(exc).__name__,'http_status':status}));raise SystemExit(1)
+        result={'sport':args.sport,'season':season,'status':'failed','error':type(exc).__name__,'http_status':status}
+        if isinstance(exc,ValueError) and any(str(exc).startswith(label) for label in ('Provider did not return a complete list','Provider season mismatch','Invalid eligible finals:','Conflicting provider final','Empty season schedule','Season team directory is incomplete','No verified season membership','History exceeds safe pagination bound')):
+            result['validation_code']=str(exc)
+        print(json.dumps(result));raise SystemExit(1)
 if __name__=='__main__': main()
