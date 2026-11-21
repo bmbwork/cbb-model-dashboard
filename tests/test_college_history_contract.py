@@ -75,6 +75,15 @@ class Contracts(unittest.TestCase):
   self.assertEqual(C.polls_cbb(payload,2027),[])
   for p in payload:p['pollDate']='2026-11-16';p['pollType']='Coaches'
   self.assertEqual(C.polls_cbb(payload,2027),[])
+ def test_uncertain_release_day_never_reuses_obsolete_rank(self):
+  payload=poll('2026-11-09T17:00:00Z',1)+poll('2026-11-16')
+  rows,_=C.normalize('cbb',2027,[cbb(startDate='2026-11-16T19:00:00Z')],C.polls_cbb(payload,2027),NOW)
+  self.assertFalse(rows[0]['rankings_verified'])
+ def test_ap_filtered_response_can_omit_redundant_type(self):
+  payload=poll('2026-11-16')
+  for p in payload:del p['pollType']
+  self.assertEqual(C.polls_cbb(payload,2027),[])
+  self.assertEqual(len(C.polls_cbb(payload,2027,requested_ap=True)),1)
  def test_cfb_full_poll_required(self):
   ranks=[dict(school='Team'+str(i),rank=i+1) for i in range(25)]
   base=dict(season=2026,seasonType='regular',week=2,polls=[dict(poll='AP Top 25',ranks=ranks)])
