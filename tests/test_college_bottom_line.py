@@ -16,7 +16,7 @@ def quote(line=-3.5, price=-110):
 def test_personal_price_comparison_cases(fair, line, expected):
     text = render_bottom_line("Ohio State", fair, .6, quote(line))
     assert expected in text
-    assert "DraftKings currently quotes Ohio State" in text
+    assert "DraftKings quotes Ohio State" in text
     assert "Check splits and line movement before wagering." in text
     assert not any(word in text.lower() for word in ("historical", "timing", "unverified", "pass", "deployment"))
 

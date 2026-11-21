@@ -24,8 +24,7 @@ def render_bottom_line(team, fair, chance, spread=None, moneyline=None, *, minim
     closing = " Check splits and line movement before wagering."
     gap = spread["line"] - fair if spread and fair is not None else None
     if spread:
-        current = "currently " if spread.get("fresh") else ""
-        comparison = f"{model}, while {spread['book']} {current}quotes {team} {_signed(spread['line'])} ({spread['price']:+.0f})."
+        comparison = f"{model}, while {spread['book']} quotes {team} {_signed(spread['line'])} ({spread['price']:+.0f})."
     else:
         comparison = model + "."
     ml_edge = None
