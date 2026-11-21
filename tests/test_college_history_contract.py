@@ -53,8 +53,15 @@ class Contracts(unittest.TestCase):
  def test_dry_run_does_not_write(self):
   class Refuse:
    def __getattr__(self,_):raise AssertionError('DB touched')
-  with patch.object(C,'fetch',return_value=([],['Home'])):
+  with patch.object(C,'fetch',return_value=([],['Home'],[])):
    self.assertTrue(C.collect('cfb',2026,Refuse(),'TEST',NOW,True)['dry_run'])
+ def test_quarantine_blocks_both_teams_but_keeps_verified_other_game(self):
+  excluded=set()
+  games=[cbb(homePoints=79),cbb(id=3,homeTeam='Other Home',awayTeam='Other Away')]
+  rows,_=C.normalize('cbb',2027,games,[],NOW,quarantine=excluded)
+  self.assertEqual(excluded,{'Home','Away'});self.assertEqual(len(rows),1);self.assertEqual(rows[0]['event_id'],'3')
+ def test_quarantine_cannot_hide_unknown_identity(self):
+  with self.assertRaises(ValueError):C.normalize('cbb',2027,[cbb(homeTeam='')],[],NOW,quarantine=set())
  def test_cfb_full_poll_required(self):
   ranks=[dict(school='Team'+str(i),rank=i+1) for i in range(25)]
   base=dict(season=2026,seasonType='regular',week=2,polls=[dict(poll='AP Top 25',ranks=ranks)])
