@@ -128,7 +128,7 @@ def team_research(team, games, coverage, cutoff, now, season, *, eligible=True):
     record = None
     if eligible and complete and completed and not unknown_before and not unusable_before and not conflicts:
         wins = sum(g["result"] == "W" for g in completed)
-        record = {"wins": wins, "losses": len(completed) - wins, "as_of": cutoff.isoformat()}
+        record = {"wins": wins, "losses": len(completed) - wins, "as_of": min(cutoff, through).isoformat()}
     notable = [g for g in completed if g["opponent_rank"] is not None]
     return {"team": team, "record": record, "games": len(completed),
             "ranked_wins": sum(g["result"] == "W" for g in notable),
@@ -293,7 +293,7 @@ def notable_results_html(row):
             date = stamp(g["played_at"]).tz_convert("America/Chicago").strftime("%b %d")
             body.append(f'<tr><td>{date}</td><td>{escape(name)} {venue} AP #{g["opponent_rank"]} {escape(g["opponent"])}</td><td class="{"win" if g["result"] == "W" else "loss"}">{g["score"]}-{g["opponent_score"]} ({g["result"]}){ot}</td></tr>')
         table = '<table><thead><tr><th>Date</th><th>Matchup</th><th>Result</th></tr></thead><tbody>' + ''.join(body) + '</tbody></table>' if body else '<p>No verified AP-ranked opponent results are available before this matchup.</p>'
-        as_of = stamp(info.get("as_of"))
+        as_of = stamp((info.get("record") or {}).get("as_of", info.get("as_of")))
         as_of_text = as_of.tz_convert("America/Chicago").strftime("%b %d, %Y · %I:%M %p %Z") if pd.notna(as_of) else "this matchup"
         record_note = f'Season record as of {as_of_text}.' if info.get("record") else 'Season record not fully verified before this matchup.'
         sources = sorted({g.get("source", "") for g in info.get("notable", []) if g.get("source")})
