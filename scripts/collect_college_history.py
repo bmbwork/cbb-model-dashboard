@@ -2,7 +2,8 @@
 from __future__ import annotations
 import argparse
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import json
 import math
 import os
@@ -47,13 +48,37 @@ def polls_cfb(payload,season):
                 result[(p.get('seasonType','regular'),p.get('week'))]=values
     return result
 
-def polls_cbb(payload,season):
+def ap_poll(value):
+    return name(value).replace(' ','') in ('ap','aptop25','associatedpress','associatedpresstop25')
+
+def poll_moment(value):
+    # A date-only or midnight publication stamp is a calendar-day assertion,
+    # not an actual release clock. The poll is safely known after that Eastern
+    # calendar day ends. Keep genuine timezone-qualified publication clocks.
+    if not isinstance(value,str): return None
+    when=dt(value)
+    try: day=datetime.fromisoformat(value.replace('Z','+00:00'))
+    except ValueError: return None
+    if when is None or (day.hour==day.minute==day.second==0):
+        bound=datetime(day.year,day.month,day.day,tzinfo=ZoneInfo('America/New_York'))+timedelta(days=1)
+        return bound.astimezone(UTC)
+    return when
+
+def uncertain_poll_start(value):
+    if not isinstance(value,str): return None
+    try: day=datetime.fromisoformat(value.replace('Z','+00:00'))
+    except ValueError:return None
+    if dt(value) is None or day.hour==day.minute==day.second==0:
+        return datetime(day.year,day.month,day.day,tzinfo=ZoneInfo('America/New_York')).astimezone(UTC)
+    return None
+
+def polls_cbb(payload,season,requested_ap=False):
     batches=defaultdict(dict)
     for p in payload:
-        when=dt(p.get('pollDate')); rank=number(p.get('ranking'))
-        if p.get('season')!=season or str(p.get('pollType')).lower()!='ap' or when is None or rank is None or not 1<=rank<=25: continue
-        batches[(p.get('seasonType'),p.get('week'),when)][name(p.get('team'))]=rank
-    return sorted([(when,values if len(values)>=25 and 1 in values.values() and 25 in values.values() else None) for (_,_,when),values in batches.items()],key=lambda x:x[0])
+        when=poll_moment(p.get('pollDate')); rank=number(p.get('ranking'))
+        if p.get('season')!=season or not (ap_poll(p.get('pollType')) or (requested_ap and not p.get('pollType'))) or when is None or rank is None or not 1<=rank<=25: continue
+        batches[(p.get('seasonType'),p.get('week'),when,str(p.get('pollDate'))[:10],uncertain_poll_start(p.get('pollDate'))) ][name(p.get('team'))]=rank
+    return sorted([(when,values if len(values)>=25 and 1 in values.values() and 25 in values.values() else None,label,uncertain) for (_,_,when,label,uncertain),values in batches.items()],key=lambda x:x[0])
 
 def normalize(sport,season,games,polls,now,quarantine=None):
     """Strict finals only. Malformed eligible finals invalidate full coverage."""
@@ -83,9 +108,10 @@ def normalize(sport,season,games,polls,now,quarantine=None):
         else:
             # Midnight/date-only releases do not establish availability earlier
             # on that same calendar day. Prefer the last prior dated full poll.
-            eligible=[(t,p) for t,p in polls if t<start and not (t.hour==t.minute==t.second==0 and t.date()==start.date())]
-            rank_at,ranking=eligible[-1] if eligible else (None,None)
-            rank_source=f'CBBD AP Top 25 {rank_at.date().isoformat()}' if ranking else None
+            ambiguous=any(uncertain is not None and uncertain<=start<=t for t,p,label,uncertain in polls)
+            eligible=[] if ambiguous else [(t,p,label) for t,p,label,uncertain in polls if t<start]
+            rank_at,ranking,poll_label=eligible[-1] if eligible else (None,None,None)
+            rank_source=f'CBBD AP Top 25 poll dated {poll_label}' if ranking else None
             periods=(g.get('homePeriodPoints'),g.get('awayPeriodPoints')); regulation=2; prefix='cbbd'; home_id=g.get('homeTeamId'); away_id=g.get('awayTeamId')
         overtime=None
         if all(isinstance(x,list) and len(x)>=regulation and all(number(v) is not None for v in x) for x in periods) and len(periods[0])==len(periods[1]) and sum(number(v) for v in periods[0])==h and sum(number(v) for v in periods[1])==a:
@@ -105,7 +131,7 @@ def normalize(sport,season,games,polls,now,quarantine=None):
 
 def fetch(sport,season,key,now,session=requests):
     url=SOURCES[sport]
-    quarantined=set()
+    quarantined=set();metadata={}
     if sport=='cfb':
         games=[]
         for level in ('fbs','fcs'):
@@ -123,10 +149,12 @@ def fetch(sport,season,key,now,session=requests):
         teams=request_list(session,url+'/teams',key,{'season':season})
         if len(teams)<200: raise ValueError(f'Season team directory is incomplete: {len(teams)}')
         raw_polls=request_list(session,url+'/rankings',key,{'season':season,'pollType':'ap'})
-        rows,_=normalize(sport,season,games,polls_cbb(raw_polls,season),datetime.now(UTC),quarantine=quarantined)
+        parsed_polls=polls_cbb(raw_polls,season,requested_ap=True)
+        metadata={'ap_rows':sum(ap_poll(p.get('pollType')) or not p.get('pollType') for p in raw_polls),'missing_poll_type_rows':sum(not p.get('pollType') for p in raw_polls),'poll_keys':sorted({str(k) for p in raw_polls for k in p.keys()})[:32],'poll_date_types':{t:sum(type(p.get('pollDate')).__name__==t for p in raw_polls) for t in sorted({type(p.get('pollDate')).__name__ for p in raw_polls})},'poll_rows':len(raw_polls),'dated_ap_rows':sum(ap_poll(p.get('pollType')) and poll_moment(p.get('pollDate')) is not None for p in raw_polls),'usable_ap_batches':sum(p[1] is not None for p in parsed_polls)}
+        rows,_=normalize(sport,season,games,parsed_polls,datetime.now(UTC),quarantine=quarantined)
         covered=sorted({str(t.get('school')).strip() for t in teams if t.get('school') and name(t.get('school')) not in {name(team) for team in quarantined}})
     if not covered: raise ValueError('No verified season membership')
-    return rows,covered,sorted(quarantined)
+    return rows,covered,sorted(quarantined),metadata
 
 class Rest:
     def __init__(self,url,key): self.url=url.rstrip('/')+'/rest/v1/'; self.headers={'apikey':key,'Authorization':f'Bearer {key}','Content-Type':'application/json'}
@@ -146,8 +174,8 @@ def collect(sport,season,db,key,now=None,dry_run=False):
     now=now or datetime.now(UTC); run_id=None
     source='CFBD full FBS/FCS season schedule and game-week AP' if sport=='cfb' else 'CBBD full regular/postseason schedule and dated AP; coverage limited to listed verified teams'
     try:
-        rows,covered,quarantined=fetch(sport,season,key,now)
-        result={'sport':sport,'season':season,'complete':True,'games_count':len(rows),'ranked_games_count':sum(1 for r in rows if r['home_rank'] or r['away_rank']),'covered_team_count':len(covered),'quarantined_team_count':len(quarantined),'dry_run':dry_run}
+        rows,covered,quarantined,metadata=fetch(sport,season,key,now)
+        result={'sport':sport,'season':season,'complete':True,'games_count':len(rows),'ranked_games_count':sum(1 for r in rows if r['home_rank'] or r['away_rank']),'covered_team_count':len(covered),'quarantined_team_count':len(quarantined),'dry_run':dry_run,**metadata}
         if dry_run: return result
         # Read only this private history table; preserve first-seen final scores
         # on repeated polls. Corrections get a new observed-at bound.
