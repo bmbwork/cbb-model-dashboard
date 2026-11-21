@@ -55,7 +55,7 @@ def polls_cbb(payload,season):
         batches[(p.get('seasonType'),p.get('week'),when)][name(p.get('team'))]=rank
     return sorted([(when,values if len(values)>=25 and 1 in values.values() and 25 in values.values() else None) for (_,_,when),values in batches.items()],key=lambda x:x[0])
 
-def normalize(sport,season,games,polls,now):
+def normalize(sport,season,games,polls,now,quarantine=None):
     """Strict finals only. Malformed eligible finals invalidate full coverage."""
     observed=now.isoformat(); out={}; covered=set(); invalid=0
     for g in games:
@@ -72,7 +72,10 @@ def normalize(sport,season,games,polls,now):
         start=dt(g.get('startDate')); h=number(g.get('homePoints')); a=number(g.get('awayPoints'))
         home=str(g.get('homeTeam') or '').strip(); away=str(g.get('awayTeam') or '').strip(); gid=number(g.get('id')); event=str(gid) if gid is not None and gid>0 else ''
         if start is None or start>=now or h is None or a is None or not home or not away or home==away or not event or h==a:
-            invalid+=1; continue
+            if quarantine is not None and home and away and home!=away:
+                quarantine.update((home,away))
+            else: invalid+=1
+            continue
         if sport=='cfb':
             ranking=polls.get((g.get('seasonType','regular'),g.get('week'))); rank_at=None
             rank_source=f'CFBD AP Top 25 {season} {g.get("seasonType")} week {g.get("week")}' if ranking else None
@@ -102,6 +105,7 @@ def normalize(sport,season,games,polls,now):
 
 def fetch(sport,season,key,now,session=requests):
     url=SOURCES[sport]
+    quarantined=set()
     if sport=='cfb':
         games=[]
         for level in ('fbs','fcs'):
@@ -119,10 +123,10 @@ def fetch(sport,season,key,now,session=requests):
         teams=request_list(session,url+'/teams',key,{'season':season})
         if len(teams)<200: raise ValueError(f'Season team directory is incomplete: {len(teams)}')
         raw_polls=request_list(session,url+'/rankings',key,{'season':season,'pollType':'ap'})
-        rows,_=normalize(sport,season,games,polls_cbb(raw_polls,season),datetime.now(UTC))
-        covered=sorted({str(t.get('school')).strip() for t in teams if t.get('school')})
+        rows,_=normalize(sport,season,games,polls_cbb(raw_polls,season),datetime.now(UTC),quarantine=quarantined)
+        covered=sorted({str(t.get('school')).strip() for t in teams if t.get('school') and name(t.get('school')) not in {name(team) for team in quarantined}})
     if not covered: raise ValueError('No verified season membership')
-    return rows,covered
+    return rows,covered,sorted(quarantined)
 
 class Rest:
     def __init__(self,url,key): self.url=url.rstrip('/')+'/rest/v1/'; self.headers={'apikey':key,'Authorization':f'Bearer {key}','Content-Type':'application/json'}
@@ -140,10 +144,10 @@ def preserve_observation(rows,previous):
 
 def collect(sport,season,db,key,now=None,dry_run=False):
     now=now or datetime.now(UTC); run_id=None
-    source='CFBD full FBS/FCS season schedule and game-week AP' if sport=='cfb' else 'CBBD full regular/postseason schedule and dated AP'
+    source='CFBD full FBS/FCS season schedule and game-week AP' if sport=='cfb' else 'CBBD full regular/postseason schedule and dated AP; coverage limited to listed verified teams'
     try:
-        rows,covered=fetch(sport,season,key,now)
-        result={'sport':sport,'season':season,'complete':True,'games_count':len(rows),'ranked_games_count':sum(1 for r in rows if r['home_rank'] or r['away_rank']),'covered_team_count':len(covered),'dry_run':dry_run}
+        rows,covered,quarantined=fetch(sport,season,key,now)
+        result={'sport':sport,'season':season,'complete':True,'games_count':len(rows),'ranked_games_count':sum(1 for r in rows if r['home_rank'] or r['away_rank']),'covered_team_count':len(covered),'quarantined_team_count':len(quarantined),'dry_run':dry_run}
         if dry_run: return result
         # Read only this private history table; preserve first-seen final scores
         # on repeated polls. Corrections get a new observed-at bound.
@@ -157,7 +161,7 @@ def collect(sport,season,db,key,now=None,dry_run=False):
         preserve_observation(rows,previous)
         for start in range(0,len(rows),250): db.post('college_game_history',rows[start:start+250],{'on_conflict':'sport,season,event_id'})
         cutoff=datetime.now(UTC).isoformat(); begin=datetime(season if sport=='cfb' else season-1,7,1,tzinfo=UTC).isoformat()
-        db.post('college_history_refresh_runs',{'sport':sport,'season':season,'status':'completed','complete':True,'completed_at':cutoff,'source':source,'games_count':len(rows),'ranked_games_count':result['ranked_games_count'],'covered_teams':covered,'complete_from':begin,'complete_through':cutoff})
+        db.post('college_history_refresh_runs',{'sport':sport,'season':season,'status':'completed','complete':True,'completed_at':cutoff,'source':source,'games_count':len(rows),'ranked_games_count':result['ranked_games_count'],'covered_teams':covered,'complete_from':begin,'complete_through':cutoff,'error_summary':('Invalid-final team coverage withheld: '+', '.join(quarantined)) if quarantined else None})
         return result
     except Exception as exc:
         if not dry_run and db is not None:
