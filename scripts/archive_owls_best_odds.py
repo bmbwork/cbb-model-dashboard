@@ -11,6 +11,7 @@ from typing import Any
 import pandas as pd
 
 from cbb_dashboard.best_odds_archive import archive_event_key, extract_best_odds_records
+from cbb_dashboard.recovery import PipelineRun, AlreadyRunning, verified_upsert
 from cbb_dashboard.owlsinsight_odds_provider import (
     DEFAULT_BOOKS,
     OwlsInsightOddsConfig,
@@ -135,17 +136,7 @@ def finalize_missed_closes(existing: list[dict[str, Any]], now: pd.Timestamp) ->
 
 
 def upsert(client: Any, records: list[dict[str, Any]]) -> int:
-    if not records:
-        return 0
-    # The archived multi-book quote payload can be large on opening slates.
-    # Keep individual writes below the size that broke CBB board HTTP/2 writes.
-    stored = 0
-    for offset in range(0, len(records), 20):
-        batch = records[offset:offset + 20]
-        response = client.table(TABLE).upsert(batch, on_conflict="raw_snapshot_hash").execute()
-        data = rows(response)
-        stored += len(data) if data else len(batch)
-    return stored
+    return verified_upsert(client,TABLE,records)
 
 
 def provider_event_key(event: dict[str, Any]) -> str:
@@ -233,13 +224,7 @@ def persist_published_board_market_snapshots(
 
     # Existing Supabase market publisher may exceed transport frame limits on
     # large slates. Keep individual batches small and idempotent by raw hash.
-    stored = 0
-    for offset in range(0, len(snapshot_records), 20):
-        batch = snapshot_records[offset:offset + 20]
-        result = client.table("cbb_market_snapshots").upsert(
-            batch, on_conflict="raw_snapshot_hash"
-        ).execute()
-        stored += len(rows(result)) or len(batch)
+    stored = verified_upsert(client,"cbb_market_snapshots",snapshot_records)
     return {
         "future_board_games": board_games,
         "matched_board_games": matched_games,
@@ -260,104 +245,110 @@ def main() -> int:
     from supabase import create_client
 
     client = create_client(supabase_url, supabase_key)
-    now = now_utc()
-    existing = current_window(client, now)
-
-    missed = finalize_missed_closes(existing, now)
-    missed_count = upsert(client, missed)
-    if missed_count:
-        print(f"Finalized {missed_count} missed close row(s) using the last stored pregame snapshot.")
+    with PipelineRun(client,"odds") as execution:
+        now = now_utc()
         existing = current_window(client, now)
 
-    wanted_keys: set[str] | None = None
-    if args.mode == "close":
-        wanted_keys = due_close_keys(existing, now)
-        if not wanted_keys:
-            print("No games need a near-tip close capture. Owls API call skipped.")
-            return 0
+        missed = finalize_missed_closes(existing, now)
+        missed_count = upsert(client, missed)
+        if missed_count:
+            print(f"Finalized {missed_count} missed close row(s) using the last stored pregame snapshot.")
+            existing = current_window(client, now)
 
-    provider = OwlsInsightOddsProvider(OwlsInsightOddsConfig(api_key=api_key, books=books))
-    payload = provider.current_odds()
-    meta = payload.get("meta", {}) if isinstance(payload, dict) and isinstance(payload.get("meta"), dict) else {}
-    events = provider._coalesce_events(payload)
-    state = event_state(existing)
-    response_timestamp = meta.get("timestamp")
+        wanted_keys: set[str] | None = None
+        if args.mode == "close":
+            wanted_keys = due_close_keys(existing, now)
+            if not wanted_keys:
+                print("No games need a near-tip close capture. Owls API call skipped.")
+                return 0
 
-    inserts: list[dict[str, Any]] = []
-    event_count = 0
-    for event in events:
-        start = pd.to_datetime(event.get("commence_time"), utc=True, errors="coerce")
-        if pd.isna(start) or start <= now or start > now + pd.Timedelta(days=LOOKAHEAD_DAYS):
-            continue
-        key = provider_event_key(event)
-        if wanted_keys is not None and key not in wanted_keys:
-            continue
-        market_roles = state.get(key, {}).get("market_roles", {})
-        initial_role = "observed"  # First tracked != verified sportsbook opening line.
-        event_rows = extract_best_odds_records(
-            event,
-            captured_at=now,
-            response_timestamp=response_timestamp,
-            snapshot_role=initial_role,
-            capture_trigger="scheduled_hourly" if args.mode == "hourly" else "scheduled_close_guard",
-        )
-        if event_rows:
-            event_count += 1
-            inserts.extend(event_rows)
-        mins_to_tip = (start - now).total_seconds() / 60.0
-        should_close = 0 <= mins_to_tip <= CLOSE_WINDOW_MINUTES
-        if should_close:
-            close_rows = extract_best_odds_records(
+        provider = OwlsInsightOddsProvider(OwlsInsightOddsConfig(api_key=api_key, books=books))
+        payload = provider.current_odds()
+        meta = payload.get("meta", {}) if isinstance(payload, dict) and isinstance(payload.get("meta"), dict) else {}
+        freshness = meta.get("freshness") if isinstance(meta.get("freshness"), dict) else {}
+        if freshness.get("stale") is True:
+            raise RuntimeError("Owls odds feed reports stale data; current market sync blocked.")
+        events = provider._coalesce_events(payload)
+        state = event_state(existing)
+        response_timestamp = meta.get("timestamp")
+
+        inserts: list[dict[str, Any]] = []
+        event_count = 0
+        for event in events:
+            start = pd.to_datetime(event.get("commence_time"), utc=True, errors="coerce")
+            if pd.isna(start) or start <= now or start > now + pd.Timedelta(days=LOOKAHEAD_DAYS):
+                continue
+            key = provider_event_key(event)
+            if wanted_keys is not None and key not in wanted_keys:
+                continue
+            market_roles = state.get(key, {}).get("market_roles", {})
+            initial_role = "observed"  # First tracked != verified sportsbook opening line.
+            event_rows = extract_best_odds_records(
                 event,
                 captured_at=now,
                 response_timestamp=response_timestamp,
-                snapshot_role="close",
-                capture_trigger="scheduled_close_guard",
+                snapshot_role=initial_role,
+                capture_trigger="scheduled_hourly" if args.mode == "hourly" else "scheduled_close_guard",
             )
-            inserts.extend(
-                row for row in close_rows
-                if "close" not in market_roles.get(str(row.get("market_type") or "").lower(), set())
-            )
+            if event_rows:
+                event_count += 1
+                inserts.extend(event_rows)
+            mins_to_tip = (start - now).total_seconds() / 60.0
+            should_close = 0 <= mins_to_tip <= CLOSE_WINDOW_MINUTES
+            if should_close:
+                close_rows = extract_best_odds_records(
+                    event,
+                    captured_at=now,
+                    response_timestamp=response_timestamp,
+                    snapshot_role="close",
+                    capture_trigger="scheduled_close_guard",
+                )
+                inserts.extend(
+                    row for row in close_rows
+                    if "close" not in market_roles.get(str(row.get("market_type") or "").lower(), set())
+                )
 
-    written = upsert(client, inserts)
-    freshness = meta.get("freshness") if isinstance(meta.get("freshness"), dict) else {}
-    if freshness.get("stale") is True:
-        raise RuntimeError("Owls odds feed reports stale data; current market sync blocked.")
-    paired = persist_published_board_market_snapshots(
-        client, provider, events, now, str(response_timestamp or "")
-    )
-    print(
-        "Paired market capture: "
-        f"future_board_games={paired['future_board_games']} "
-        f"matched={paired['matched_board_games']} "
-        f"snapshots={paired['snapshot_rows']} "
-        f"written={paired['rows_written']}."
-    )
-    if paired["future_board_games"] and not paired["snapshot_rows"]:
-        raise RuntimeError(
-            "Upcoming published CBB board has no paired Owls quotes; "
-            "check provider coverage, event mapping, authorization and rate limits."
+        written = upsert(client, inserts)
+        paired = persist_published_board_market_snapshots(
+            client, provider, events, now, str(response_timestamp or "")
         )
-    if paired["future_board_games"] and not written:
-        raise RuntimeError(
-            "Upcoming CBB board has zero Owls archive rows; mobile sportsbook cards "
-            "will be empty even when Streamlit market snapshots exist."
-        )
-    print(
-        f"Owls best-odds archive complete: mode={args.mode} provider_events={len(events)} "
-        f"eligible_events={event_count} rows_written={written}."
-    )
-    freshness = meta.get("freshness") if isinstance(meta.get("freshness"), dict) else {}
-    if freshness:
-        print(f"Owls freshness: ageSeconds={freshness.get('ageSeconds')} stale={freshness.get('stale')}")
-    if provider.last_rate_headers:
         print(
-            "Owls rate limits: "
-            f"minute={provider.last_rate_headers.get('remaining_minute') or 'n/a'} "
-            f"month={provider.last_rate_headers.get('remaining_month') or 'n/a'}"
+            "Paired market capture: "
+            f"future_board_games={paired['future_board_games']} "
+            f"matched={paired['matched_board_games']} "
+            f"snapshots={paired['snapshot_rows']} "
+            f"written={paired['rows_written']}."
         )
-    return 0
+        if paired["future_board_games"] and not paired["snapshot_rows"]:
+            raise RuntimeError(
+                "Upcoming published CBB board has no paired Owls quotes; "
+                "check provider coverage, event mapping, authorization and rate limits."
+            )
+        if paired["future_board_games"] and not written:
+            raise RuntimeError(
+                "Upcoming CBB board has zero Owls archive rows; mobile sportsbook cards "
+                "will be empty even when Streamlit market snapshots exist."
+            )
+        print(
+            f"Owls best-odds archive complete: mode={args.mode} provider_events={len(events)} "
+            f"eligible_events={event_count} rows_written={written}."
+        )
+        freshness = meta.get("freshness") if isinstance(meta.get("freshness"), dict) else {}
+        if freshness:
+            print(f"Owls freshness: ageSeconds={freshness.get('ageSeconds')} stale={freshness.get('stale')}")
+        if provider.last_rate_headers:
+            print(
+                "Owls rate limits: "
+                f"minute={provider.last_rate_headers.get('remaining_minute') or 'n/a'} "
+                f"month={provider.last_rate_headers.get('remaining_month') or 'n/a'}"
+            )
+        execution.rows = written + paired["rows_written"]
+        execution.details = {"archive_rows":written,**paired}
+        return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except AlreadyRunning:
+        print(json.dumps({"status":"already_running","stage":"odds"}))

@@ -57,7 +57,12 @@ class Client:
     def insert(self,values):self.writes.append((self.table_name,'insert',copy.deepcopy(values)));return self
     def update(self,values):self.writes.append((self.table_name,'update',copy.deepcopy(values)));return self
     def upsert(self,values,**k):self.writes.append((self.table_name,'upsert',copy.deepcopy(values)));return self
-    def execute(self):return SimpleNamespace(data=self.consensus)
+    def in_(self,key,values):self.hashes=set(values);return self
+    def execute(self):
+        if self.table_name=='cbb_owner_betting_splits' and hasattr(self,'hashes'):
+            records=[r for table,method,batch in self.writes if table==self.table_name and method=='upsert' for r in batch]
+            return SimpleNamespace(data=[{'raw_snapshot_hash':r['raw_snapshot_hash']} for r in records if r['raw_snapshot_hash'] in self.hashes])
+        return SimpleNamespace(data=self.consensus)
 
 def consensus_rows(money=(65,35)):
     return [dict(refresh_run_id='r1',slate_date='2026-11-19',game_id='1',market_type='spread',side=side,line=line,tickets_pct=tickets,handle_pct=handle,observed_at=STAMP) for side,line,tickets,handle in [('spread_away',4,55,money[0]),('spread_home',-4,45,money[1])]]

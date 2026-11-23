@@ -7,6 +7,7 @@ import pandas as pd
 from .market import market_records
 from .public_consensus import _active_board
 from .owlsinsight_provider import annotate_sharp_money_signals
+from .recovery import verified_upsert
 
 RUNS = 'cbb_split_refresh_runs'
 
@@ -52,8 +53,7 @@ def collect_owls_splits(client, provider, *, now=None, dry_run=False):
                     records = market_records(annotate_sharp_money_signals(frame,board),actor='github_actions')
                     for row in records:row['capture_trigger']='scheduled_live'
                     if not dry_run:
-                        for offset in range(0,len(records),100):
-                            client.table('cbb_owner_betting_splits').upsert(records[offset:offset+100],on_conflict='raw_snapshot_hash').execute()
+                        verified_upsert(client,'cbb_owner_betting_splits',records,batch_size=100)
                     summary.update(rows_written=0 if dry_run else len(records),parsed_rows=len(records),feed_state='reported')
         values = dict(status='completed',completed_at=datetime.now(timezone.utc).isoformat(),provider_observed_at=observed,**{k:v for k,v in summary.items() if k!='parsed_rows'})
         if not dry_run:client.table(RUNS).update(values).eq('id',run_id).execute()
