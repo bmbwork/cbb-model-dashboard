@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { withClockSkewFallback } from "./auth-fetch.mjs";
 
 function secret() {
   const value = Deno.env.get("SUPABASE_SECRET_KEY")?.trim() || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
@@ -30,7 +31,11 @@ Deno.serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL");
     if (!url) throw new Error("url unavailable");
-    const db = createClient(url, secret(), { auth: { persistSession: false, autoRefreshToken: false } });
+    const key=secret();
+    const db = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: withClockSkewFallback(key,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()) },
+    });
 
     const today = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const [{ data: slate, error: slateError }, { data: snapshot, error: snapshotError }, splitResult, consensusResult,currentResult,gradingResult] = await Promise.all([
