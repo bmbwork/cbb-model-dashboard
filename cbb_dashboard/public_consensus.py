@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from .market import normalize_team_name
+from .recovery import transport_get,retry_transport
 
 CONSENSUS_URL = "https://www.scoresandodds.com/ncaab/consensus-picks"
 USER_AGENT = "StatFactory-CBB/1.0 consensus collector"
@@ -31,7 +32,7 @@ def _key(value: Any) -> str:
 
 
 def fetch_consensus_html(timeout: float = 30.0) -> str:
-    response = requests.get(CONSENSUS_URL, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}, timeout=timeout)
+    response = transport_get(requests,CONSENSUS_URL,headers={"User-Agent":USER_AGENT,"Accept":"text/html,application/xhtml+xml"},timeout=timeout)
     response.raise_for_status()
     if "Consensus Picks" not in response.text or "% of Bets" not in response.text:
         raise RuntimeError("CBB consensus page did not contain the expected public betting markers")
@@ -237,6 +238,14 @@ def collect_public_consensus(admin_client, *, now: datetime | None = None) -> di
         if len(events)<minimum:
             raise RuntimeError(f"CBB consensus coverage failed closed: matched {len(events)} games; minimum={minimum}")
         for start in range(0,len(matched),500): admin_client.table("cbb_consensus_splits").insert(matched[start:start+500]).execute()
+        saved=[]
+        for start in range(0,len(matched)+1,500):
+            batch=retry_transport(lambda:admin_client.table('cbb_consensus_splits').select('game_id,market_type,side').eq('refresh_run_id',run).order('game_id').order('market_type').order('side').range(start,start+499).execute()).data or []
+            saved.extend(batch)
+            if len(batch)<500:break
+        key=lambda r:(r['game_id'],r['market_type'],r['side'])
+        if len(saved)!=len(matched) or {key(r) for r in saved}!={key(r) for r in matched}:
+            raise RuntimeError('CBB consensus publication readback did not match')
         values={"completed_at":stamp,"status":"completed","requested_games":len(board),"parsed_matchups":len(source_pairs),"matched_events":len(events),"unmatched_active_events":max(0,len(board)-len(events)),"diagnostics":{"stored_rows":len(matched)}}
         admin_client.table("cbb_consensus_refresh_runs").update(values).eq("refresh_run_id",run).execute()
         return {"refresh_run_id":run,"stored_rows":len(matched),**values}

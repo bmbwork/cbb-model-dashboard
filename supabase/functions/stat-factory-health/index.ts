@@ -32,11 +32,14 @@ Deno.serve(async (req) => {
     if (!url) throw new Error("url unavailable");
     const db = createClient(url, secret(), { auth: { persistSession: false, autoRefreshToken: false } });
 
-    const [{ data: slate, error: slateError }, { data: snapshot, error: snapshotError }, splitResult, consensusResult] = await Promise.all([
+    const today = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const [{ data: slate, error: slateError }, { data: snapshot, error: snapshotError }, splitResult, consensusResult,currentResult,gradingResult] = await Promise.all([
       db.from("cbb_slates").select("slate_date,model_version,revision,board_rows,metrics_json,published_at,updated_at").order("published_at", { ascending: false }).limit(1).maybeSingle(),
       db.from("cbb_market_snapshots").select("snapshot_time_utc,provider,market_type,book_count,created_at,updated_at").order("snapshot_time_utc", { ascending: false }).limit(1).maybeSingle(),
       db.from("cbb_split_refresh_runs").select("requested_at,completed_at,status,feed_state,requested_games,provider_events,mapped_games,split_games,rows_written,provider_observed_at,error_summary").order("requested_at",{ascending:false}).limit(1).maybeSingle(),
       db.from("cbb_consensus_refresh_runs").select("requested_at,completed_at,status,requested_games,matched_events").order("requested_at",{ascending:false}).limit(1).maybeSingle(),
+      db.rpc('cbb_current_model_health',{p_date:today}),
+      db.from('cbb_pipeline_runs').select('status,started_at,completed_at,rows_verified,error_summary').eq('stage','grading').order('started_at',{ascending:false}).limit(1).maybeSingle(),
     ]);
     if (slateError || snapshotError) throw slateError || snapshotError;
 
@@ -47,10 +50,12 @@ Deno.serve(async (req) => {
     const marketRows = snapshot ? 1 : 0;
     const oddsPopulating = marketExpected ? Boolean(lastMarket && marketAge !== null && marketAge <= 4 && marketRows > 0) : null;
     const boardRows = Number(slate?.board_rows ?? 0);
-    const modelOk = slate ? boardRows > 0 : operatingState === "offseason" ? null : false;
+    const current = currentResult.data;
+    const modelOk = operatingState === 'offseason' ? null : !currentResult.error && current?.current_slate_published === true && current?.coverage_verified === true;
 
     const incidents: string[] = [];
     if (operatingState === "active" && slate && boardRows <= 0) incidents.push("published board has zero rows");
+    if (operatingState === 'active' && modelOk === false) incidents.push('current-day model publication or forecast coverage is unverified for '+today);
     if (marketExpected && oddsPopulating === false) incidents.push("market data is stale or absent for the active slate");
 
     const split = splitResult.data;
@@ -58,6 +63,8 @@ Deno.serve(async (req) => {
     const splitAge = ageHours(split?.completed_at);
     const consensusAge = ageHours(consensus?.completed_at);
     const warnings: string[] = [];
+    const grading=gradingResult.data;
+    if (grading && ['failed','abandoned'].includes(grading.status)) warnings.push('Final grading '+grading.status+'; verified prior finals are retained');
     if (marketExpected) {
       if (splitResult.error || !split) warnings.push("Owl split collection has not been verified");
       else if (split.status !== "completed") warnings.push(`Owl split collection ${split.status}`);
@@ -79,7 +86,7 @@ Deno.serve(async (req) => {
       last_model_run: slate?.published_at ?? null,
       latest_model_status: slate ? "published" : null,
       latest_model_stage: null,
-      model_output_count: boardRows,
+      model_output_count: Number(current?.current_slate_rows ?? 0),
       model_outputs_ok: modelOk,
       latest_slate: slate ?? null,
       workflow_status: workflowStatus,
@@ -87,6 +94,11 @@ Deno.serve(async (req) => {
       anomaly_status: incidents.length ? "incident" : "clear",
       anomaly_summary: incidents.length ? incidents.join(", ") : null,
       detail: {
+        current_slate_published: current?.current_slate_published === true,
+        current_slate_rows: current?.current_slate_rows ?? 0,
+        expected_slate_date: today,
+        forecast_coverage: current ?? null,
+        final_grading: grading ?? null,
         market_age_hours: marketAge,
         snapshot_present: Boolean(snapshot),
         market_source: "cbb_market_snapshots",

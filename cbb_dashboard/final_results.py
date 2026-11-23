@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import requests
+from .recovery import retry_transport
 
 
 def final_scores(payload):
@@ -48,11 +49,14 @@ def fetch_scores(day: str, key: str, session=requests):
     tz = ZoneInfo('America/Chicago')
     start = datetime.combine(d, time.min, tzinfo=tz)
     end = datetime.combine(d + timedelta(days=1), time.min, tzinfo=tz)
-    response = session.get('https://api.collegebasketballdata.com/games', params={
-        'startDateRange': start.isoformat(), 'endDateRange': end.isoformat(),
-        'season': d.year + (d.month >= 9),
-    }, headers={'Authorization': f'Bearer {key}'}, timeout=30)
-    response.raise_for_status()
+    def pull():
+        response = session.get('https://api.collegebasketballdata.com/games', params={
+            'startDateRange': start.isoformat(), 'endDateRange': end.isoformat(),
+            'season': d.year + (d.month >= 9),
+        }, headers={'Authorization': f'Bearer {key}'}, timeout=30)
+        response.raise_for_status()
+        return response
+    response = retry_transport(pull)
     return final_scores(response.json())
 
 

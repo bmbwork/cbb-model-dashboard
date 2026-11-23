@@ -80,10 +80,14 @@ class FakeClient:
         self.saved.extend(items)
         return self
 
+    def in_(self, key, values):
+        self.hashes=set(values)
+        return self
+
     def execute(self):
         if self.table_name == "cbb_slates":
             return SimpleNamespace(data=self.published)
-        return SimpleNamespace(data=[])
+        return SimpleNamespace(data=[{'raw_snapshot_hash':r['raw_snapshot_hash']} for r in self.saved if r['raw_snapshot_hash'] in getattr(self,'hashes',set())])
 
 
 def test_paired_archive_source_populates_market_snapshot_rows():

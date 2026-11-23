@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import requests
+from .recovery import transport_get
 
 from .market import MarketDataError, normalize_team_name
 
@@ -120,7 +121,7 @@ class OwlsInsightOddsProvider:
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{self.BASE_URL}{path}"
         try:
-            response = self.session.get(url, params=params or None, timeout=self.config.timeout_seconds)
+            response = transport_get(self.session,url,params=params or None,timeout=self.config.timeout_seconds)
             self.last_rate_headers = {
                 "remaining_minute": str(response.headers.get("X-RateLimit-Remaining-Minute") or ""),
                 "remaining_month": str(response.headers.get("X-RateLimit-Remaining-Month") or ""),

@@ -19,5 +19,15 @@ jobs:
       - run: python -m pip install -r requirements.txt pytest
       - run: python -m pip install --dry-run -r requirements-automation.lock
       - run: bash -n scripts/stage_cbb_background_runtime.sh scripts/install_cbb_model_refresh_launchd.sh scripts/install_cbb_auto_grade_launchd.sh
-      - run: python -m pytest -q tests/test_launchd_installers.py tests/test_cbb_forecast_dispatcher.py tests/test_headless_package_import.py tests/test_automation_ordering.py tests/test_automation_archive.py tests/test_automation_grading.py tests/test_grading_quota_efficiency.py tests/test_final_integrity.py tests/test_owls_odds_v1_4_8.py tests/test_owls_dual_capture.py tests/test_market_readiness_auth.py
+      - run: python -m pytest -q tests/test_launchd_installers.py tests/test_cbb_forecast_dispatcher.py tests/test_headless_package_import.py tests/test_automation_ordering.py tests/test_automation_archive.py tests/test_automation_grading.py tests/test_grading_quota_efficiency.py tests/test_final_integrity.py tests/test_owls_odds_v1_4_8.py tests/test_owls_dual_capture.py tests/test_market_readiness_auth.py tests/test_pipeline_recovery.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify PostgreSQL execution leases and publication coverage
+        env:
+          PGLITE_MODULE: /tmp/cbb-sql-tests/node_modules/@electric-sql/pglite
+        run: |
+          npm install --prefix /tmp/cbb-sql-tests --no-save --ignore-scripts --no-package-lock @electric-sql/pglite@0.3.14
+          node tests/pipeline-recovery-sql.cjs
+          node --test tests/health-splits.test.cjs
       - run: python -m compileall -q app.py cbb_dashboard scripts stat_factory_archives.py stat_factory_board_order.py
