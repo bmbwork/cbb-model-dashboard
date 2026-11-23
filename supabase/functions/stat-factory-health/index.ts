@@ -47,6 +47,8 @@ Deno.serve(async (req) => {
       db.from('cbb_pipeline_runs').select('status,started_at,completed_at,rows_verified,error_summary').eq('stage','grading').order('started_at',{ascending:false}).limit(1).maybeSingle(),
     ]);
     if (slateError || snapshotError) throw slateError || snapshotError;
+    if (currentResult.error) throw new Error(`Current-day model telemetry request failed [${String(currentResult.error.code || 'unknown').replace(/[^a-zA-Z0-9_]/g,'').slice(0,32)}]: ${String(currentResult.error.message || 'unavailable').slice(0,240)}`);
+    if (!currentResult.data || typeof currentResult.data !== 'object') throw new Error('Current-day model telemetry returned no result');
 
     const operatingState = cbbSeason() ? "active" : "offseason";
     const lastMarket = snapshot?.snapshot_time_utc ?? null;
