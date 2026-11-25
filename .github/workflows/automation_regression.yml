@@ -29,5 +29,6 @@ jobs:
         run: |
           npm install --prefix /tmp/cbb-sql-tests --no-save --ignore-scripts --no-package-lock @electric-sql/pglite@0.3.14
           node tests/pipeline-recovery-sql.cjs
+          node tests/mobile-market-history-sql.cjs
           node --test tests/health-*.test.*
       - run: python -m compileall -q app.py cbb_dashboard scripts stat_factory_archives.py stat_factory_board_order.py
